@@ -2,6 +2,8 @@ from notify import *
 import sqlite3
 from datetime import datetime
 from datetime import timedelta
+from config import BOT_TOKEN, OPENAI_API_KEY, SYSTEM_PROMPT
+from openai import OpenAI
 
 TYPE = ("text", "audio", "empty")
 
@@ -25,20 +27,49 @@ def get_question(user_id):
 
 
 # Получение ответа (ChatGPT)
-def get_answer(data, type : TYPE):
+def get_answer(question: str, data, type : TYPE):  # описание в backend_documentation.md
     if type == "audio":
-        audio_to_text(data)
+        user_answer: str = audio_to_text(data)
+        question_pack: tuple[str, str] = (question, user_answer)
     elif type == "empty":
-        pass  # TODO ТУТ БУДЕТ КОД
+        return (None, None)
+    else:
+        question_pack: tuple[str, str] = (question, data)
+        pass
 
-    return ("Ответ верный. Уточнения:"
-            "SOLID - это акроним, который представляет собой пять основных принципов объектно-ориентированного программирования и дизайна. Каждая буква в слове SOLID представляет собой один из этих принципов:"
-            "1. S - Принцип единственной ответственности (Single Responsibility Principle): Класс должен иметь только одну причину для изменения."
-            "2. O - Принцип открытости/закрытости (Open/Closed Principle): Программные сущности должны быть открыты для расширения, но закрыты для изменения."
-            "3. L - Принцип подстановки Барбары Лисков (Liskov Substitution Principle): Объекты в программе должны быть заменяемыми исходными объектами."
-            "4. I - Принцип разделения интерфейса (Interface Segregation Principle): Клиенты не должны зависеть от интерфейсов, которые они не используют."
-            "5. D - Принцип инверсии зависимостей (Dependency Inversion Principle): Модули верхнего уровня не должны зависеть от модулей нижнего уровня. Оба должны зависеть от абстракций.")
+    user_response = ask_chatgpt(question_pack)
 
+    return (user_response["result"], user_response["comment"])
+
+
+# Запрос к OpenAI
+def ask_chatgpt(question_pack: tuple):
+    """
+    Функция принимает пакет вопрос-ответ, отправляет его модели GPT-3.5 и возвращает результат и комментарий.
+    Более подробное описание в backend_documentation.md
+    """
+    user_question, user_answer = question_pack
+    ask_content = f"Question: {user_question}\nAnswer: {user_answer}"
+
+    client = OpenAI(api_key=OPENAI_API_KEY, base_url="https://api.proxyapi.ru/openai/v1", timeout=30)
+
+    completion = client.chat.completions.create(
+        model="gpt-3.5-turbo",
+        messages=[
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": ask_content}
+        ]
+    )
+
+    gpt_answer_content = completion.choices[0].message.content
+    result, comment = gpt_answer_content.split(' || ')
+
+    response = {
+        "result": result.strip(),
+        "comment": comment.strip(),
+    }
+
+    return response
 
 
 # Трансформация в текст
