@@ -11,8 +11,8 @@ def init_db():
     create_user_table = '''
         CREATE TABLE IF NOT EXISTS user (
             id INTEGER PRIMARY KEY,
-            active BOOLEAN,
-            date_created DATE
+            active BOOLEAN DEFAULT 1,
+            date_created DATE DEFAULT CURRENT_DATE
         );
        '''
 
@@ -21,7 +21,7 @@ def init_db():
             id INTEGER PRIMARY KEY,
             name TEXT,
             answer TEXT,
-            active BOOLEAN,
+            active BOOLEAN DEFAULT 1,
             theme TEXT
         );
         '''
@@ -40,7 +40,7 @@ def init_db():
         CREATE TABLE IF NOT EXISTS user_notify (
             user_id INTEGER,
             timedate TEXT,
-            active BOOLEAN,
+            active BOOLEAN DEFAULT 1,
             FOREIGN KEY (user_id) REFERENCES user (id)
         );
         '''
