@@ -8,14 +8,74 @@ TYPE = ("text", "audio", "empty")
 
 # Инициализация пользоавтеля
 def init_user(user_id):
-    pass
+    conn = sqlite3.connect('sqlite.db')
+    cursor = conn.cursor()
+
+    print(f"DEBUG: Checking if user '{user_id}' exists in the database.")
+
+    # Проверка, существует ли уже такой пользователь
+    cursor.execute("SELECT id FROM user WHERE id = ?", (user_id,))
+    result = cursor.fetchone()
+
+    if result:
+        # Если пользователь найден, обновляем его статус active
+        cursor.execute("UPDATE user SET active = ? WHERE id = ?", (True, user_id))
+        print(f"User with ID {user_id} already exists in the database and is now active.")
+    else:
+        # Если пользователь не найден, добавляем его
+        date_created = datetime.now().strftime('%Y-%m-%d')
+        cursor.execute("INSERT INTO user (id, active, date_created) VALUES (?, ?, ?)",
+                       (user_id, True, date_created))
+        print(f"User with ID {user_id} added to the database.")
+
+    conn.commit()
+    conn.close()
+    return user_id
 
 
 # Запрос статистики
 def get_report(user_id):
-    return ("Количество заданных вопросов ***\n "
-            "Правильных ответов **%\n"
-            "Неправильных **%")
+    # Подключаемся к базе данных
+    conn = sqlite3.connect('sqlite.db')
+    cursor = conn.cursor()
+
+    # SQL-запрос для получения статистики
+    query = '''
+            SELECT 
+                COUNT(*) AS total_questions,
+                SUM(CASE WHEN correct = 1 THEN 1 ELSE 0 END) AS correct_answers,
+                SUM(CASE WHEN correct = 0 THEN 1 ELSE 0 END) AS incorrect_answers
+            FROM user_stat
+            WHERE user_id = ?
+        '''
+
+    cursor.execute(query, (user_id,))
+    result = cursor.fetchone()
+
+    total_questions = result[0]
+    correct_answers = result[1]
+    incorrect_answers = result[2]
+
+    if total_questions == 0:
+        return ("Количество заданных вопросов: 0\n "
+                "Правильных ответов: 0%\n"
+                "Неправильных: 0%")
+
+    correct_percentage = round((correct_answers / total_questions) * 100)
+    incorrect_percentage = 100 - correct_percentage
+
+    report = (f"Количество заданных вопросов: {total_questions}\n "
+              f"Правильных ответов: {correct_percentage}%\n"
+              f"Неправильных: {incorrect_percentage}%")
+
+    # Закрываем соединение с базой данных
+    conn.close()
+
+    return report
+
+    # return ("Количество заданных вопросов ***\n "
+    #         "Правильных ответов **%\n"
+    #         "Неправильных **%")
 
 
 # Получение вопроса
