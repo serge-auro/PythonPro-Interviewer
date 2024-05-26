@@ -2,6 +2,12 @@ from notify import *
 import sqlite3
 from datetime import datetime
 from datetime import timedelta
+import requests
+import whisper
+import io
+from config import BOT_TOKEN
+# Чтобы не подгружать в backend BOT_TOKEN, нужный в функции download_audio_file для загрузки голосового сообщения,
+# надо передать его из фронтенда в функцию get_answer и далее в функцию audio_to_text
 
 TYPE = ("text", "audio", "empty")
 
@@ -100,10 +106,44 @@ def get_answer(data, type : TYPE):
             "5. D - Принцип инверсии зависимостей (Dependency Inversion Principle): Модули верхнего уровня не должны зависеть от модулей нижнего уровня. Оба должны зависеть от абстракций.")
 
 
+# Загрузка голосового сообщения в оперативную память
+def download_audio_file(file_id, bot_token=BOT_TOKEN):
+    """
+    Скачивание голосового сообщения из Telegram и сохранение в оперативной памяти.
+    """
+    # Создаем URL для получения информации о файле
+    file_url = f"https://api.telegram.org/bot{bot_token}/getFile?file_id={file_id}"
+
+    # Запрашиваем информацию о файле у Telegram API
+    response = requests.get(file_url)
+    file_path = response.json()['result']['file_path']
+
+    # Создаем URL для скачивания самого файла
+    download_url = f"https://api.telegram.org/file/bot{bot_token}/{file_path}"
+
+    # Загружаем файл в оперативную память
+    audio_response = requests.get(download_url)
+
+    # Создаем объект BytesIO для хранения аудио данных в памяти
+    audio_data = io.BytesIO(audio_response.content)
+
+    return audio_data
+
 
 # Трансформация в текст
 def audio_to_text(data):
-    return "SOLID - это акроним, который представляет собой пять основных принципов объектно-ориентированного программирования и дизайна."
+    """
+    Преобразование голосового сообщения в текст с использованием OpenAI Whisper.
+    """
+    file_id = data['voice']['file_id']
+    audio_data = download_audio_file(file_id)
+
+    # Загрузка модели Whisper
+    model = whisper.load_model("base")
+
+    # Преобразование аудио в текст
+    result = model.transcribe(audio_data)
+    return result['text']
 
 
 # Отслеживание уведомлений
