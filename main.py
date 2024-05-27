@@ -7,11 +7,14 @@ import sqlite3
 from datetime import datetime
 from datetime import timedelta
 from telebot import types
-from backend import init_user as backend_init_user, get_report as backend_get_report, get_question as backend_get_question
+from backend import (init_user as backend_init_user, get_report as backend_get_report, get_question as backend_get_question, get_answer as backend_get_answer)
 
 
 bot = telebot.TeleBot(BOT_TOKEN)
 
+
+
+# Вывод сообщения о запуске бота
 print("PythonPro Interviewer is being started", datetime.now())
 # TYPE = ("text", "audio", "empty")
 
@@ -21,6 +24,7 @@ def error_handler(func):
         try:
             return func(*args, **kwargs)
         except Exception as e:
+            # Вывод ошибки и остановка опроса
             print(f"Error in {func.__name__}: {e}")
             bot.stop_polling()
             time.sleep(5)  # Дайте немного времени перед перезапуском
@@ -36,6 +40,7 @@ def handle_start(message):
     bot.send_message(user_id, "Я твой бот-интервьюер по Python")
     show_menu(user_id)
 
+# Функция для отображения основного меню
 def show_menu(user_id):
     markup = types.ReplyKeyboardMarkup(row_width=2, resize_keyboard=True)
     button_start_interview = types.KeyboardButton("🚀 Начать интервью")
@@ -46,6 +51,7 @@ def show_menu(user_id):
     markup.add(button_start_interview, button_request_report, button_reset_result, button_description)
     bot.send_message(user_id, "Выберите действие:", reply_markup=markup)
 
+# Функция для отображения меню окончания интервью
 def show_end_interview_menu(user_id):
     markup = types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
     button_end_interview = types.KeyboardButton("⛔️ Закончить интервью")
@@ -79,16 +85,14 @@ def handle_text(message):
     else:
         bot.send_message(user_id, "Пожалуйста, выберите действие из меню.")
 
+# Функция для обработки вопросов
 def handle_question(message):
     user_id = message.from_user.id
     question = backend_get_question(user_id)
 
-    answers = [
-        ("6", "wrong"),
-        ("8", "correct"),
-        ("16", "wrong"),
-        ("9", "wrong")
-    ]
+    answers = []
+    for text, callback_data in backend_get_answer(user_id):
+        answers.append((text, callback_data))
 
     markup = types.InlineKeyboardMarkup(row_width=1)
     for text, callback_data in answers:
@@ -96,6 +100,10 @@ def handle_question(message):
 
     bot.send_message(user_id, question, reply_markup=markup)
 
-if __name__ == "__main__":
-    print("PythonPro Interviewer is being started", datetime.now())
-    bot.polling(none_stop=True)
+# Основной цикл для опроса и обработки сообщений
+while True:
+    try:
+        bot.polling(none_stop=True)
+    except Exception as e:
+        print(f"Error: {e}")
+        time.sleep(1)
