@@ -1,14 +1,38 @@
+# Импорт библиотек:
+#
+# Импорт whisper следует обновить на openai_whisper, если используется стандартная библиотека OpenAI Whisper.
+# Проверьте путь к модулю notify, возможно нужно его уточнить.
+# Функции:
+#
+# В функции get_answer переменная type используется неправильно. Следует изменить её на TYPE.
+# Переменные и типы:
+#
+# Следует указать типы данных для переменных в функции get_answer.
+# Строка с SQL-запросом в get_question:
+#
+# Возможно, надо добавить скобки и уточнить запрос в зависимости от структуры вашей базы данных.
+# Ошибка в get_notify:
+#
+# Функция get_notify вызывает get_answer без нужных аргументов.
+
+
+
 from notify import *
 import sqlite3
-from datetime import datetime
-from datetime import timedelta
+from datetime import datetime, timedelta
+import requests
+import openai_whisper as whisper  # Если используется стандартная библиотека OpenAI Whisper
+import io
+# from config import BOT_TOKEN
+
 from config import BOT_TOKEN, OPENAI_API_KEY, SYSTEM_PROMPT
 from openai import OpenAI
+import random
 
 TYPE = ("text", "audio", "empty")
 
 
-# Инициализация пользоавтеля
+# Инициализация пользователя
 def init_user(user_id):
     conn = sqlite3.connect('sqlite.db')
     cursor = conn.cursor()
@@ -75,19 +99,42 @@ def get_report(user_id):
 
     return report
 
-    # return ("Количество заданных вопросов ***\n "
-    #         "Правильных ответов **%\n"
-    #         "Неправильных **%")
-
 
 # Получение вопроса
 def get_question(user_id):
-    set_timer(user_id)
-    return "Что такое SOLID?"
+    try:
+        conn = sqlite3.connect('sqlite.db')  # Подключение к базе данных
+        cursor = conn.cursor()  # Создание объекта курсора для выполнения SQL-запросов
+
+        query = '''
+        SELECT q.id, q.name 
+        FROM question q
+        LEFT JOIN user_stat us ON q.id = us.question_id AND us.user_id = ? AND us.correct = 1
+        WHERE us.question_id IS NULL AND q.active = 1
+        '''  # SQL-запрос для выборки случайного вопроса, который пользователь еще не отвечал
+
+        cursor.execute(query, (user_id,))  # Выполнение SQL-запроса с передачей параметра user_id
+        questions = cursor.fetchall()  # Получение всех строк результата запроса
+
+        if not questions:  # Если список вопросов пустой
+            return "Все вопросы были уже правильно отвечены или нет доступных активных вопросов."
+
+        question_id, question_text = random.choice(questions)  # Выбор случайного вопроса из списка
+
+        set_timer(user_id)
+
+        return question_text  # Возвращает текст случайного вопроса
+
+    except sqlite3.Error as e:  # Обработка исключения SQLite
+        print("Ошибка SQLite:", e)  # Вывод сообщения об ошибке
+        return "Произошла ошибка при работе с базой данных. Пожалуйста, попробуйте позже."
+
+    finally:
+        conn.close()  # Закрытие соединения с базой данных в любом случае, даже если возникло исключение
 
 
 # Получение ответа (ChatGPT)
-def get_answer(question: str, data, type : TYPE):  # описание в backend_documentation.md
+def get_answer(question: str, data, type: str):  # Описание в backend_documentation.md
     if type == "audio":
         user_answer: str = audio_to_text(data)
         question_pack: tuple[str, str] = (question, user_answer)
@@ -95,7 +142,6 @@ def get_answer(question: str, data, type : TYPE):  # описание в backend
         return (None, None)
     else:
         question_pack: tuple[str, str] = (question, data)
-        pass
 
     user_response = ask_chatgpt(question_pack)
 
@@ -132,11 +178,53 @@ def ask_chatgpt(question_pack: tuple):
     return response
 
 
+# Загрузка голосового сообщения в оперативную память
+def download_audio_file(file_id, bot_token=BOT_TOKEN):
+    """
+    Скачивание голосового сообщения из Telegram и сохранение в оперативной памяти.
+    """
+    # Создаем URL для получения информации о файле
+    file_url = f"https://api.telegram.org/bot{bot_token}/getFile?file_id={file_id}"
+
+    # Запрашиваем информацию о файле у Telegram API
+    response = requests.get(file_url)
+    file_path = response.json()['result']['file_path']
+
+    # Создаем URL для скачивания самого файла
+    download_url = f"https://api.telegram.org/file/bot{bot_token}/{file_path}"
+
+    # Загружаем файл в оперативную память
+    audio_response = requests.get(download_url)
+
+    # Создаем объект BytesIO для хранения аудио данных в памяти
+    audio_data = io.BytesIO(audio_response.content)
+
+    return audio_data
+
+
 # Трансформация в текст
 def audio_to_text(data):
-    return "SOLID - это акроним, который представляет собой пять основных принципов объектно-ориентированного программирования и дизайна."
+    """
+    Преобразование голосового сообщения в текст с использованием OpenAI Whisper.
+    """
+    file_id = data['voice']['file_id']
+    audio_data = download_audio_file(file_id)
+
+    # Загрузка модели Whisper
+    model = whisper.load_model("base")
+
+    # Преобразование аудио в текст
+    result = model.transcribe(audio_data)
+    return result['text']
 
 
 # Отслеживание уведомлений
 def get_notify(user_id):
-    get_answer(None, "text")
+    get_answer(None, "", "text")
+
+
+# Основные изменения:
+#
+# Исправлен импорт библиотеки whisper на openai_whisper.
+# Добавлен тип type: str в get_answer.
+# Исправлен вызов get_answer в get_notify.
