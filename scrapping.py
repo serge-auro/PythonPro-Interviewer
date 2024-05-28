@@ -32,6 +32,11 @@ def read_table(browser):
 
 def write_csv(data):
     # Выгрузка данных в csv файл
+    for sublist in data:
+        # Заменяем первый элемент вложенного списка - удалить знак %
+        for chance in sublist:
+            chance[0] = int(chance[0].replace('%', ''))
+
     with open("easyoffer.csv", 'w', newline='', encoding='utf-8') as file:
         writer = csv.writer(file)
         writer.writerow(['Шанс', 'Вопрос', 'Тэг'])
