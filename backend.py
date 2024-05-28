@@ -5,9 +5,8 @@ from datetime import timedelta
 import requests
 import whisper
 import io
-from config import BOT_TOKEN
-# Чтобы не подгружать в backend BOT_TOKEN, нужный в функции download_audio_file для загрузки голосового сообщения,
-# надо передать его из фронтенда в функцию get_answer и далее в функцию audio_to_text
+# from config import BOT_TOKEN
+
 
 TYPE = ("text", "audio", "empty")
 
