@@ -3,10 +3,6 @@ import schedule
 import time
 from backend import get_notify
 
-# Создаём таймер - в БД
-def set_timer(user_id):
-    pass
-
 
 # Проверка всех пользователей
 def notify_users():

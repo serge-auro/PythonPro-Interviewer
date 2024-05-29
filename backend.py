@@ -1,4 +1,3 @@
-from notify import *
 import sqlite3
 from datetime import datetime
 from datetime import timedelta
@@ -243,3 +242,33 @@ def audio_to_text(file_id):
 # Отслеживание уведомлений
 def get_notify(user_id):
     get_answer(None, "text")
+
+
+# Создаём таймер - в БД
+def set_timer(user_id):
+    conn = sqlite3.connect('sqlite.db')
+    cursor = conn.cursor()
+
+    current_datetime = datetime.now() + timedelta(minutes=2)
+    timedate = current_datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
+    cursor.execute("INSERT INTO user_notify (user_id, timedate, active) VALUES (?, ?, ?)",
+                   (user_id, timedate, True))
+    conn.close()
+
+
+# Удаление уведомлений
+def skip_timer(user_id):
+    conn = sqlite3.connect('sqlite.db')
+    cursor = conn.cursor()
+
+    # SQL-запрос для получения статистики
+    query = '''
+            UPDATE active = 0
+              FROM user_notify
+             WHERE user_id = ?
+               AND active = 1
+        '''
+
+    cursor.execute(query, (user_id,))
+    conn.close()
