@@ -12,7 +12,7 @@ def init_db():
         CREATE TABLE IF NOT EXISTS user (
             id INTEGER PRIMARY KEY,
             active BOOLEAN DEFAULT 1,
-            date_created DATE DEFAULT CURRENT_DATE
+            date_created DATE DEFAULT CURRENT_DATE,
             user_lvl TEXT
         );
        '''
@@ -136,7 +136,7 @@ def view_tables(name_table):
 
 
 # Создание таблиц и тестовое заполнение
-# init_db()
+init_db()
 # add_test_info()
 
 
