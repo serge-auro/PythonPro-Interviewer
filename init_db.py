@@ -13,7 +13,8 @@ def init_db():
             id INTEGER PRIMARY KEY,
             active BOOLEAN DEFAULT 1,
             date_created DATE DEFAULT CURRENT_DATE,
-            user_lvl TEXT
+            user_lvl TEXT DEFAULT 'junior',
+            user_minute INTEGER DEFAULT 2
         );
        '''
 
@@ -41,6 +42,7 @@ def init_db():
     create_user_notify_table = '''
         CREATE TABLE IF NOT EXISTS user_notify (
             user_id INTEGER,
+            question_id INTEGER,
             timedate TEXT,
             active BOOLEAN DEFAULT 1,
             FOREIGN KEY (user_id) REFERENCES user (id)
@@ -65,13 +67,13 @@ def add_test_info():
 
     # SQL-запросы для заполнения таблиц тестовыми данными
     test_user = '''
-    INSERT INTO user(id, active, date_created, user_lvl)
+    INSERT INTO user(id, active, date_created, user_lvl, user_minute)
         VALUES
-        (1234567891, 1, '2023-01-01', 'junior'),
-        (1234567892, 0, '2023-02-01', 'middle'),
-        (1234567893, 1, '2023-03-01', 'senior'),
-        (1234567894, 0, '2023-04-01', 'junior'),
-        (1234567895, 1, '2023-05-01', 'middle')
+        (1234567891, 1, '2023-01-01', 'junior', 1),
+        (1234567892, 0, '2023-02-01', 'middle', 2),
+        (1234567893, 1, '2023-03-01', 'senior', 2),
+        (1234567894, 0, '2023-04-01', 'junior', 3),
+        (1234567895, 1, '2023-05-01', 'middle', 1)
         '''
 
     test_question = '''
@@ -95,13 +97,13 @@ def add_test_info():
     '''
 
     test_user_notify = '''
-    INSERT INTO user_notify (user_id, timedate, active) 
+    INSERT INTO user_notify (user_id, timedate, active, question_id) 
         VALUES
-        (1234567891, '2024-05-01 10:00:00', 1),
-        (1234567892, '2024-05-02 11:05:00', 0),
-        (1234567893, '2024-05-03 12:10:30', 1),
-        (1234567894, '2024-05-04 13:30:00', 1),
-        (1234567895, '2024-05-05 14:00:55', 0)
+        (1234567891, '2024-05-01 10:00:00', 1, 1),
+        (1234567892, '2024-05-02 11:05:00', 0, 2),
+        (1234567893, '2024-05-03 12:10:30', 1, 3),
+        (1234567894, '2024-05-04 13:30:00', 1, 4),
+        (1234567895, '2024-05-05 14:00:55', 0, 5)
     '''
     cursor.execute(test_user)
     cursor.execute(test_question)

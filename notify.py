@@ -8,7 +8,7 @@ from backend import get_notify
 def notify_users():
     user_id = 0
     # TODO ТУТ БУДЕТ КОД
-    get_notify(user_id)
+    get_notify(user_id, question_id)
 
 
 # Расписание крон задачи

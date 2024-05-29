@@ -96,8 +96,9 @@ def get_report(user_id):
 
 # Получение вопроса
 def get_question(user_id):
+    conn = sqlite3.connect('sqlite.db')  # Подключение к базе данных
+    question = {"id": '', "name": ''}
     try:
-        conn = sqlite3.connect('sqlite.db')  # Подключение к базе данных
         cursor = conn.cursor()  # Создание объекта курсора для выполнения SQL-запросов
 
         query = '''
@@ -114,10 +115,10 @@ def get_question(user_id):
             return "Все вопросы были уже правильно отвечены или нет доступных активных вопросов."
 
         question_id, question_text = random.choice(questions)  # Выбор случайного вопроса из списка
+        question = {"id": question_id, "name": question_text}
+        set_timer(user_id, question_id)
 
-        set_timer(user_id)
-
-        return question_text  # Возвращает текст случайного вопроса
+        return question  # Возвращает текст случайного вопроса
 
     except sqlite3.Error as e:  # Обработка исключения SQLite
         print("Ошибка SQLite:", e)  # Вывод сообщения об ошибке
@@ -240,20 +241,21 @@ def audio_to_text(file_id):
 
 
 # Отслеживание уведомлений
-def get_notify(user_id):
-    get_answer(None, "text")
+def get_notify(user_id, question_id):
+    # TODO добавить вопрос
+    get_answer("Какие есть типы данных в Python", None, "empty")
 
 
 # Создаём таймер - в БД
-def set_timer(user_id):
+def set_timer(user_id, question_id):
     conn = sqlite3.connect('sqlite.db')
     cursor = conn.cursor()
 
     current_datetime = datetime.now() + timedelta(minutes=2)
     timedate = current_datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
-    cursor.execute("INSERT INTO user_notify (user_id, timedate, active) VALUES (?, ?, ?)",
-                   (user_id, timedate, True))
+    cursor.execute("INSERT INTO user_notify (user_id, question_id, timedate, active) VALUES (?, ?, ?, ?)",
+                   (user_id, question_id, timedate, True))
     conn.close()
 
 
@@ -268,6 +270,7 @@ def skip_timer(user_id):
               FROM user_notify
              WHERE user_id = ?
                AND active = 1
+               AND question_id > 0
         '''
 
     cursor.execute(query, (user_id,))

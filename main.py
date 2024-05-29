@@ -1,17 +1,16 @@
 import telebot
 from config import BOT_TOKEN
-from backend import *
 import time
 from datetime import datetime
 import sqlite3
 from datetime import datetime
 from datetime import timedelta
 from telebot import types
-from backend import (init_user as backend_init_user, get_report as backend_get_report, get_question as backend_get_question, get_answer as backend_get_answer)
+from backend import (init_user as backend_init_user, get_report as backend_get_report, skip_timer as backend_skip_timer,
+                     get_question as backend_get_question, get_answer as backend_get_answer)
 
 
 bot = telebot.TeleBot(BOT_TOKEN)
-
 
 
 # Вывод сообщения о запуске бота
@@ -37,6 +36,7 @@ def error_handler(func):
 @error_handler
 def handle_start(message):
     user_id = message.from_user.id
+    backend_init_user(user_id)
     bot.send_message(user_id, "Я твой бот-интервьюер по Python")
     show_menu(user_id)
 
@@ -76,10 +76,12 @@ def handle_text(message):
         report = backend_get_report(user_id)
         bot.send_message(user_id, report)
     elif message.text == "🔄 Обнулить результат":
+        # TODO clear_result
         bot.send_message(user_id, "Ваш результат был обнулен.")
     elif message.text == "ℹ️ Описание бота":
         bot.send_message(user_id, "Этот бот предназначен для тренировки навыков интервью по Python.")
-    elif message.text == "⛔️ Закончить интервью":
+    elif message.text == "⛔️ Пропустить вопрос":
+        backend_skip_timer(user_id)
         bot.send_message(user_id, "Интервью закончено. Для нового интервью воспользуйтесь командой /start или Начать интервью.")
         show_menu(user_id)
     else:
@@ -91,14 +93,15 @@ def handle_question(message):
     question = backend_get_question(user_id)
 
     answers = []
-    for text, callback_data in backend_get_answer(user_id):
+    # TODO добавить определение типа текст\аудио и исправить вызв backend_get_answer ниже
+    for text, callback_data in backend_get_answer(question["name"], "что-то умное", "text"):
         answers.append((text, callback_data))
 
     markup = types.InlineKeyboardMarkup(row_width=1)
     for text, callback_data in answers:
         markup.add(types.InlineKeyboardButton(text, callback_data=callback_data))
 
-    bot.send_message(user_id, question, reply_markup=markup)
+    bot.send_message(user_id, question["name"], reply_markup=markup)
 
 # Основной цикл для опроса и обработки сообщений
 while True:
