@@ -13,6 +13,7 @@ def init_db():
             id INTEGER PRIMARY KEY,
             active BOOLEAN DEFAULT 1,
             date_created DATE DEFAULT CURRENT_DATE
+            user_lvl TEXT
         );
        '''
 
@@ -22,7 +23,8 @@ def init_db():
             name TEXT,
             answer TEXT,
             active BOOLEAN DEFAULT 1,
-            theme TEXT
+            theme TEXT,
+            rate INTEGER
         );
         '''
 
@@ -63,23 +65,23 @@ def add_test_info():
 
     # SQL-запросы для заполнения таблиц тестовыми данными
     test_user = '''
-    INSERT INTO user(id, active, date_created)
+    INSERT INTO user(id, active, date_created, user_lvl)
         VALUES
-        (1234567891, 1, '2023-01-01'),
-        (1234567892, 0, '2023-02-01'),
-        (1234567893, 1, '2023-03-01'),
-        (1234567894, 0, '2023-04-01'),
-        (1234567895, 1, '2023-05-01')
+        (1234567891, 1, '2023-01-01', 'junior'),
+        (1234567892, 0, '2023-02-01', 'middle'),
+        (1234567893, 1, '2023-03-01', 'senior'),
+        (1234567894, 0, '2023-04-01', 'junior'),
+        (1234567895, 1, '2023-05-01', 'middle')
         '''
 
     test_question = '''
-    INSERT INTO question (name, answer, active, theme)
+    INSERT INTO question (name, answer, active, theme, rate)
         VALUES
-         ('Question 1', 'Answer 1', 1, 'Theme 1'),
-         ('Question 2', 'Answer 2', 0, 'Theme 2'),
-         ('Question 3', 'Answer 3', 1, 'Theme 3'),
-         ('Question 4', 'Answer 4', 0, 'Theme 4'),
-         ('Question 5', 'Answer 5', 1, 'Theme 5')
+         ('Question 1', 'Answer 1', 1, 'Theme 1', 3),
+         ('Question 2', 'Answer 2', 0, 'Theme 2', 5),
+         ('Question 3', 'Answer 3', 1, 'Theme 3', 20),
+         ('Question 4', 'Answer 4', 0, 'Theme 4', 50),
+         ('Question 5', 'Answer 5', 1, 'Theme 5', 70)
          '''
 
     test_user_stat = '''
@@ -132,9 +134,11 @@ def view_tables(name_table):
     # Закрытие соединения
     conn.close()
 
+
 # Создание таблиц и тестовое заполнение
 # init_db()
 # add_test_info()
+
 
 # Проверка таблиц
 view_tables("user")
