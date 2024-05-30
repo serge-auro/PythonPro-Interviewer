@@ -137,7 +137,6 @@ def get_answer(question: str, data, type : TYPE):  # описание в backend
         return (None, None)
     else:
         question_pack: tuple[str, str] = (question, data)
-        pass
 
     user_response = ask_chatgpt(question_pack)
 
