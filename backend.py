@@ -129,18 +129,38 @@ def get_question(user_id):
 
 
 # Получение ответа (ChatGPT)
-def process_answer(question: str, data, type : TYPE):  # описание в backend_documentation.md
+def process_answer(user_id, data, type : TYPE):
+    conn = sqlite3.connect('sqlite.db')
+    cursor = conn.cursor()
+    question_id, question_text = ""
+    query = '''
+        SELECT qq.id, qq.name
+          FROM user_notify as un, question as qq
+         WHERE un.question_id = qq.id
+           AND qq.active = 1
+           AND un.id = ? LIMIT 1
+        '''
+    cursor.execute(query, (user_id,))
+    result = cursor.fetchone()
+    if result:
+        question_id, question_text = result
+
     if type == "audio":
-        user_answer: str = audio_to_text(data)
-        question_pack: tuple[str, str] = (question, user_answer)
+        user_answer = audio_to_text(data)
     elif type == "empty":
-        return (None, None)
+        return None
     else:
-        question_pack: tuple[str, str] = (question, data)
+        user_answer = data
 
-    user_response = ask_chatgpt(question_pack)
+    user_response = ask_chatgpt((question_text, user_answer))
 
-    return (user_response["result"], user_response["comment"])
+    # Сохранение ответа в БД
+    cursor.execute("INSERT INTO user_stat (user_id, question_id, user_answer, correct, timestamp) VALUES (?, ?, ?, ?, ?)",
+                   (user_id, question_id, user_answer, user_response['result'] == 'correct', datetime.now()))
+    conn.commit()
+    conn.close()
+
+    return user_response['result'], user_response['comment']
 
 
 # Запрос к OpenAI
@@ -242,7 +262,7 @@ def audio_to_text(file_id):
 # Отслеживание уведомлений
 def get_notify(user_id, question_id):
     # TODO добавить вопрос
-    process_answer("Какие есть типы данных в Python", None, "empty")
+    process_answer(user_id, "я не знаю", "empty")
 
 
 # Создаём таймер - в БД
