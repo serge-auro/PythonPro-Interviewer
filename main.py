@@ -1,21 +1,20 @@
 import telebot
 from config import BOT_TOKEN
 import time
-from datetime import datetime
+import logging
+from datetime import datetime, timedelta
 import sqlite3
-from datetime import datetime
-from datetime import timedelta
 from telebot import types
 from backend import (init_user as backend_init_user, get_report as backend_get_report, skip_timer as backend_skip_timer,
                      get_question as backend_get_question, get_answer as backend_get_answer)
 
+# Настройка логирования
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 bot = telebot.TeleBot(BOT_TOKEN)
 
-
 # Вывод сообщения о запуске бота
-print("PythonPro Interviewer is being started", datetime.now())
-# TYPE = ("text", "audio", "empty")
+logging.info("PythonPro Interviewer is being started")
 
 # Декоратор - Обработчик ошибок
 def error_handler(func):
@@ -23,8 +22,7 @@ def error_handler(func):
         try:
             return func(*args, **kwargs)
         except Exception as e:
-            # Вывод ошибки и остановка опроса
-            print(f"Error in {func.__name__}: {e}")
+            logging.error(f"Error in {func.__name__}: {e}")
             bot.stop_polling()
             time.sleep(5)  # Дайте немного времени перед перезапуском
             if args and args[0]:
@@ -58,32 +56,23 @@ def show_end_interview_menu(user_id):
     markup.add(button_end_interview)
     bot.send_message(user_id, "Интервью началось. Для окончания выберите 'Закончить интервью'.", reply_markup=markup)
 
+# Словарь для обработки текстовых сообщений
+commands = {
+    "🚀 Старт": handle_start,
+    "🚀 Начать интервью": show_end_interview_menu,
+    "📊 Запросить отчет": lambda user_id: bot.send_message(user_id, backend_get_report(user_id)),
+    "🔄 Обнулить результат": lambda user_id: bot.send_message(user_id, "Ваш результат был обнулен."),
+    "ℹ️ Описание бота": lambda user_id: bot.send_message(user_id, "Этот бот предназначен для тренировки навыков интервью по Python."),
+    "⛔️ Пропустить вопрос": lambda user_id: skip_question(user_id)
+}
+
 # Обработчик текстовых сообщений
 @bot.message_handler(func=lambda message: True)
 @error_handler
 def handle_text(message):
     user_id = message.from_user.id
-    if message.text == "🚀 Старт":
-        bot.send_message(user_id, "Инициализация пользователя...")
-        backend_init_user(user_id)
-        bot.send_message(user_id, "Пользователь успешно инициализирован.")
-    elif message.text == "🚀 Начать интервью":
-        bot.send_message(user_id, "Интервью начинается...")
-        show_end_interview_menu(user_id)
-        handle_question(message)
-    elif message.text == "📊 Запросить отчет":
-        bot.send_message(user_id, "Ваш отчет запрашивается. Пожалуйста, подождите.")
-        report = backend_get_report(user_id)
-        bot.send_message(user_id, report)
-    elif message.text == "🔄 Обнулить результат":
-        # TODO clear_result
-        bot.send_message(user_id, "Ваш результат был обнулен.")
-    elif message.text == "ℹ️ Описание бота":
-        bot.send_message(user_id, "Этот бот предназначен для тренировки навыков интервью по Python.")
-    elif message.text == "⛔️ Пропустить вопрос":
-        backend_skip_timer(user_id)
-        bot.send_message(user_id, "Интервью закончено. Для нового интервью воспользуйтесь командой /start или Начать интервью.")
-        show_menu(user_id)
+    if message.text in commands:
+        commands[message.text](user_id)
     else:
         bot.send_message(user_id, "Пожалуйста, выберите действие из меню.")
 
@@ -103,10 +92,16 @@ def handle_question(message):
 
     bot.send_message(user_id, question["name"], reply_markup=markup)
 
+# Функция для пропуска вопроса
+def skip_question(user_id):
+    backend_skip_timer(user_id)
+    bot.send_message(user_id, "Интервью закончено. Для нового интервью воспользуйтесь командой /start или Начать интервью.")
+    show_menu(user_id)
+
 # Основной цикл для опроса и обработки сообщений
 while True:
     try:
         bot.polling(none_stop=True)
     except Exception as e:
-        print(f"Error: {e}")
+        logging.error(f"Error: {e}")
         time.sleep(1)
