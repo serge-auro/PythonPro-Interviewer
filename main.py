@@ -6,12 +6,13 @@ from datetime import datetime, timedelta
 import sqlite3
 from telebot import types
 from backend import (init_user as backend_init_user, get_report as backend_get_report, skip_timer as backend_skip_timer,
-                     get_question as backend_get_question, get_answer as backend_get_answer)
+                     get_question as backend_get_question, get_answer as backend_get_answer, process_answer as backend_process_answer)
 
 # Настройка логирования
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 bot = telebot.TeleBot(BOT_TOKEN)
+user_states = {}
 
 # Вывод сообщения о запуске бота
 logging.info("PythonPro Interviewer is being started")
@@ -56,10 +57,42 @@ def show_end_interview_menu(user_id):
     markup.add(button_end_interview)
     bot.send_message(user_id, "Интервью началось. Для окончания выберите 'Закончить интервью'.", reply_markup=markup)
 
+# Функция для задания вопросов
+def ask_question(user_id):
+    question = backend_get_question(user_id)
+    user_states[user_id] = "waiting_for_answer"
+
+    answers = []
+    for text, callback_data in backend_get_answer(question["name"], "что-то умное", "text"):
+        answers.append((text, callback_data))
+
+    markup = types.InlineKeyboardMarkup(row_width=1)
+    for text, callback_data in answers:
+        markup.add(types.InlineKeyboardButton(text, callback_data=callback_data))
+
+    bot.send_message(user_id, question["name"], reply_markup=markup)
+
+# Функция для обработки ответов
+def handle_answer(message):
+    user_id = message.from_user.id
+    if user_states.get(user_id) == "waiting_for_answer":
+        # Вызываем метод бэкенда для обработки ответа
+        backend_process_answer(user_id, message.text)  # Замените backend_process_answer на реальный метод
+        bot.send_message(user_id, "Ваш ответ принят. Следующий вопрос.")
+        ask_question(user_id)  # Задаем следующий вопрос
+    else:
+        bot.send_message(user_id, "Пожалуйста, выберите действие из меню.")
+
+# Функция для пропуска вопроса
+def skip_question(user_id):
+    backend_skip_timer(user_id)
+    bot.send_message(user_id, "Интервью закончено. Для нового интервью воспользуйтесь командой /start или Начать интервью.")
+    show_menu(user_id)
+
 # Словарь для обработки текстовых сообщений
 commands = {
     "🚀 Старт": handle_start,
-    "🚀 Начать интервью": show_end_interview_menu,
+    "🚀 Начать интервью": start_interview,
     "📊 Запросить отчет": lambda user_id: bot.send_message(user_id, backend_get_report(user_id)),
     "🔄 Обнулить результат": lambda user_id: bot.send_message(user_id, "Ваш результат был обнулен."),
     "ℹ️ Описание бота": lambda user_id: bot.send_message(user_id, "Этот бот предназначен для тренировки навыков интервью по Python."),
@@ -73,30 +106,10 @@ def handle_text(message):
     user_id = message.from_user.id
     if message.text in commands:
         commands[message.text](user_id)
+    elif user_states.get(user_id) == "waiting_for_answer":
+        handle_answer(message)
     else:
-        bot.send_message(user_id, "Пожалуйста, выберите действие из меню.")
-
-# Функция для обработки вопросов
-def handle_question(message):
-    user_id = message.from_user.id
-    question = backend_get_question(user_id)
-
-    answers = []
-    # TODO добавить определение типа текст\аудио и исправить вызв backend_get_answer ниже
-    for text, callback_data in backend_get_answer(question["name"], "что-то умное", "text"):
-        answers.append((text, callback_data))
-
-    markup = types.InlineKeyboardMarkup(row_width=1)
-    for text, callback_data in answers:
-        markup.add(types.InlineKeyboardButton(text, callback_data=callback_data))
-
-    bot.send_message(user_id, question["name"], reply_markup=markup)
-
-# Функция для пропуска вопроса
-def skip_question(user_id):
-    backend_skip_timer(user_id)
-    bot.send_message(user_id, "Интервью закончено. Для нового интервью воспользуйтесь командой /start или Начать интервью.")
-    show_menu(user_id)
+        bot.send_message(user_id, "Добро пожаловать. Пожалуйста, выберите действие из меню.")
 
 # Основной цикл для опроса и обработки сообщений
 while True:
