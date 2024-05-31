@@ -43,7 +43,7 @@
 
 ---
 
-### `get_answer(question: str, data: Any, type: TYPE) -> tuple`
+### `process_answer(question: str, data: Any, type: TYPE) -> tuple`
 
 Получение ответа на вопрос через ChatGPT или другими средствами.
 

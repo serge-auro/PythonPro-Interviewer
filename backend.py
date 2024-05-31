@@ -129,7 +129,7 @@ def get_question(user_id):
 
 
 # Получение ответа (ChatGPT)
-def get_answer(question: str, data, type : TYPE):  # описание в backend_documentation.md
+def process_answer(question: str, data, type : TYPE):  # описание в backend_documentation.md
     if type == "audio":
         user_answer: str = audio_to_text(data)
         question_pack: tuple[str, str] = (question, user_answer)
@@ -242,7 +242,7 @@ def audio_to_text(file_id):
 # Отслеживание уведомлений
 def get_notify(user_id, question_id):
     # TODO добавить вопрос
-    get_answer("Какие есть типы данных в Python", None, "empty")
+    process_answer("Какие есть типы данных в Python", None, "empty")
 
 
 # Создаём таймер - в БД
