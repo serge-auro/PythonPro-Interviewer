@@ -34,6 +34,7 @@ def init_db():
             user_id INTEGER,
             question_id INTEGER,
             correct BOOLEAN,
+            timestamp DATE DEFAULT CURRENT_DATE,
             FOREIGN KEY (user_id) REFERENCES user (id),
             FOREIGN KEY (question_id) REFERENCES question (id),
             UNIQUE(user_id, question_id)
