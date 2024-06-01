@@ -35,7 +35,8 @@ def init_db():
             question_id INTEGER,
             correct BOOLEAN,
             FOREIGN KEY (user_id) REFERENCES user (id),
-            FOREIGN KEY (question_id) REFERENCES question (id)
+            FOREIGN KEY (question_id) REFERENCES question (id),
+            UNIQUE(user_id, question_id)
         );
         '''
 

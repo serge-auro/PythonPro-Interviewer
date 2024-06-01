@@ -138,7 +138,7 @@ def process_answer(user_id, data, type : TYPE):
           FROM user_notify as un, question as qq
          WHERE un.question_id = qq.id
            AND qq.active = 1
-           AND un.id = ? LIMIT 1
+           AND un.user_id = ? LIMIT 1
         '''
     cursor.execute(query, (user_id,))
     result = cursor.fetchone()
@@ -155,8 +155,8 @@ def process_answer(user_id, data, type : TYPE):
     user_response = ask_chatgpt((question_text, user_answer))
 
     # Сохранение ответа в БД
-    cursor.execute("INSERT INTO user_stat (user_id, question_id, user_answer, correct, timestamp) VALUES (?, ?, ?, ?, ?)",
-                   (user_id, question_id, user_answer, user_response['result'] == 'correct', datetime.now()))
+    cursor.execute("INSERT OR REPLACE INTO user_stat (user_id, question_id, correct, timestamp) VALUES (?, ?, ?, ?)",
+                   (user_id, question_id, user_response['result'] == 'correct', datetime.now()))
     conn.commit()
     conn.close()
 
