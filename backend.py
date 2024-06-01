@@ -132,12 +132,14 @@ def get_question(user_id):
 def process_answer(user_id, data, type : TYPE):
     conn = sqlite3.connect('sqlite.db')
     cursor = conn.cursor()
-    question_id, question_text = ""
+    question_id = 0
+    question_text = ""
     query = '''
         SELECT qq.id, qq.name
           FROM user_notify as un, question as qq
          WHERE un.question_id = qq.id
            AND qq.active = 1
+           AND un.active = 1
            AND un.user_id = ? LIMIT 1
         '''
     cursor.execute(query, (user_id,))
@@ -260,7 +262,7 @@ def audio_to_text(file_id):
 
 
 # Отслеживание уведомлений
-def get_notify(user_id, question_id):
+def get_notify(user_id):
     # TODO добавить вопрос
     process_answer(user_id, "я не знаю", "empty")
 

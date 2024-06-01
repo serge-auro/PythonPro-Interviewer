@@ -3,6 +3,12 @@ import schedule
 import time
 from backend import get_notify
 from datetime import datetime
+import logging
+
+
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
+logging.info("PythonPro Interviewer notify is being started")
 
 
 def notify_users():
@@ -22,7 +28,8 @@ def notify_users():
         notifications = cursor.fetchall()
 
         for user_id, question_id in notifications:
-            get_notify(user_id, question_id)
+            logging.info(f"Sending notification {user_id} user with {question_id} question.")
+            get_notify(user_id)
 
         # Опционально, обновить записи, чтобы они больше не были активны
         cursor.execute('''
