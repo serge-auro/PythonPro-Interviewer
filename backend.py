@@ -102,9 +102,9 @@ def get_question(user_id):
         question = {"id": question_id, "name": question_text}
 
         # Запись вопроса в таблицу user_notify
-        insert_query = '''
-        INSERT OR REPLACE INTO user_notify (user_id, question_id, active) VALUES (?, ?, 1)
-        '''
+        # insert_query = '''
+        # INSERT OR REPLACE INTO user_notify (user_id, question_id, active) VALUES (?, ?, 1)
+        # '''
         cursor.execute(insert_query, (user_id, question_id))
         conn.commit()
 
@@ -119,7 +119,7 @@ def get_question(user_id):
         conn.close()  # Закрытие соединения с базой данных в любом случае, даже если возникло исключение
 
 # Получение ответа (ChatGPT)
-def process_answer(user_id, data, type: str):
+def process_answer(user_id, data, type: TYPE):
     conn = sqlite3.connect('sqlite.db')
     cursor = conn.cursor()
     question_id = 0
@@ -160,10 +160,11 @@ def process_answer(user_id, data, type: str):
             (user_id, question_id, user_response['result'] == 'correct', datetime.now()))
 
         # Деактивация вопроса в user_notify
-        cursor.execute("UPDATE user_notify SET active = 0 WHERE user_id = ? AND question_id = ?",
-                       (user_id, question_id))
-
-        conn.commit()
+        skip_timer(user_id, question_id)
+        # cursor.execute("UPDATE user_notify SET active = 0 WHERE user_id = ? AND question_id = ?",
+        #                (user_id, question_id))
+        #
+        # conn.commit()
 
     except sqlite3.Error as e:
         return "Ошибка", "Ошибка при сохранении вашего ответа."
@@ -259,11 +260,11 @@ def set_timer(user_id, question_id):
     timedate = current_datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
     cursor.execute("INSERT INTO user_notify (user_id, question_id, timedate, active) VALUES (?, ?, ?, ?)",
-                   (user_id, question_id, timedate, True))
+                   (user_id, question_id, timedate, 1))
     conn.close()
 
 # Удаление уведомлений
-def skip_timer(user_id):
+def skip_timer(user_id, question_id):
     conn = sqlite3.connect('sqlite.db')
     cursor = conn.cursor()
 
@@ -273,10 +274,10 @@ def skip_timer(user_id):
               FROM user_notify
              WHERE user_id = ?
                AND active = 1
-               AND question_id > 0
+               AND question_id ?
         '''
 
-    cursor.execute(query, (user_id,))
+    cursor.execute(query, (user_id, question_id))
     conn.close()
 
 def update_user_stat(user_id, question_id, is_correct):
