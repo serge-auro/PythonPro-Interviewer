@@ -12,6 +12,7 @@ import numpy as np
 import ffmpeg
 import logging
 
+
 TYPE = ("text", "audio", "empty")
 
 # Настройка логирования
@@ -116,6 +117,14 @@ def get_question(user_id):
 
         question_id, question_text = random.choice(questions)  # Выбор случайного вопроса из списка
         question = {"id": question_id, "name": question_text}
+
+        # Запись вопроса в таблицу user_notify
+        insert_query = '''
+        INSERT OR REPLACE INTO user_notify (user_id, question_id, active) VALUES (?, ?, 1)
+        '''
+        cursor.execute(insert_query, (user_id, question_id))
+        conn.commit()
+
         set_timer(user_id, question_id)
 
         return question  # Возвращает текст случайного вопроса
@@ -129,11 +138,12 @@ def get_question(user_id):
 
 
 # Получение ответа (ChatGPT)
-def process_answer(user_id, data, type : TYPE):
+def process_answer(user_id, data, type: str):
     conn = sqlite3.connect('sqlite.db')
     cursor = conn.cursor()
     question_id = 0
     question_text = ""
+
     query = '''
         SELECT qq.id, qq.name
           FROM user_notify as un, question as qq
@@ -141,26 +151,52 @@ def process_answer(user_id, data, type : TYPE):
            AND qq.active = 1
            AND un.active = 1
            AND un.user_id = ? LIMIT 1
-        '''
-    cursor.execute(query, (user_id,))
-    result = cursor.fetchone()
-    if result:
-        question_id, question_text = result
+    '''
 
-    if type == "audio":
-        user_answer = audio_to_text(data)
-    elif type == "empty":
-        return None
-    else:
-        user_answer = data
+    try:
+        cursor.execute(query, (user_id,))
+        result = cursor.fetchone()
+        if result:
+            question_id, question_text = result
+        else:
+            logging.error(f"No active question found for user {user_id}")
+            # Добавим запрос для логирования активных вопросов
+            cursor.execute('SELECT * FROM question WHERE active = 1')
+            active_questions = cursor.fetchall()
+            logging.info(f"Active questions: {active_questions}")
 
-    user_response = ask_chatgpt((question_text, user_answer))
+            # Добавим запрос для логирования активных записей в user_notify для данного пользователя
+            cursor.execute('SELECT * FROM user_notify WHERE user_id = ? AND active = 1', (user_id,))
+            active_user_notify = cursor.fetchall()
+            logging.info(f"Active user_notify for user {user_id}: {active_user_notify}")
 
-    # Сохранение ответа в БД
-    cursor.execute("INSERT OR REPLACE INTO user_stat (user_id, question_id, correct, timestamp) VALUES (?, ?, ?, ?)",
-                   (user_id, question_id, user_response['result'] == 'correct', datetime.now()))
-    conn.commit()
-    conn.close()
+            return "Ошибка", "Активный вопрос не найден."
+
+        if type == "audio":
+            user_answer = audio_to_text(data)
+        elif type == "empty":
+            return "Ошибка", "Пустой ответ."
+        else:
+            user_answer = data
+
+        user_response = ask_chatgpt((question_text, user_answer))
+
+        # Сохранение ответа в БД
+        cursor.execute(
+            "INSERT OR REPLACE INTO user_stat (user_id, question_id, correct, timestamp) VALUES (?, ?, ?, ?)",
+            (user_id, question_id, user_response['result'] == 'correct', datetime.now()))
+
+        # Деактивация вопроса в user_notify
+        cursor.execute("UPDATE user_notify SET active = 0 WHERE user_id = ? AND question_id = ?",
+                       (user_id, question_id))
+
+        conn.commit()
+
+    except sqlite3.Error as e:
+        logging.error(f"SQLite error: {e}")
+        return "Ошибка", "Ошибка при сохранении вашего ответа."
+    finally:
+        conn.close()
 
     return user_response['result'], user_response['comment']
 

@@ -27,7 +27,7 @@ def error_handler(func):
             logging.error(f"Error in {func.__name__}: {e}")
             bot.stop_polling()
             time.sleep(5)  # Дайте немного времени перед перезапуском
-            if args and args[0]:
+            if args and args[0] and hasattr(args[0], 'chat'):
                 handle_start(args[0])  # Вызов стартового меню
 
     return wrapper
@@ -55,7 +55,7 @@ def show_menu(user_id):
     bot.send_message(user_id, "Выберите действие:", reply_markup=markup)
 
 
-# Функция для отображения меню окончания интервью
+# Функция для начала интервью
 @error_handler
 def start_interview(user_id):
     markup = types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
@@ -63,15 +63,22 @@ def start_interview(user_id):
     markup.add(button_end_interview)
 
     question = backend_get_question(user_id)
-    user_states[user_id] = "waiting_for_answer"
-    bot.send_message(user_id, question["name"], reply_markup=markup)
+    if isinstance(question, dict) and "name" in question and "id" in question:
+        user_states[user_id] = ("waiting_for_answer", question)
+        bot.send_message(user_id, question["name"], reply_markup=markup)
+    else:
+        bot.send_message(user_id, "Ошибка при получении вопроса. Пожалуйста, попробуйте снова.")
+        logging.error(f"Invalid question format: {question}")
 
 
 # Функция для обработки ответов
 @error_handler
 def handle_answer(message):
     user_id = message.from_user.id
-    if user_states.get(user_id) == "waiting_for_answer":
+    user_state = user_states.get(user_id)
+
+    if user_state and user_state[0] == "waiting_for_answer":
+        question = user_state[1]
         if message.content_type == 'text':
             user_response = message.text
             response_type = "text"
@@ -84,9 +91,21 @@ def handle_answer(message):
             bot.send_message(user_id, "Пожалуйста, отправьте текстовое сообщение или аудио.")
             return
 
-        bot.send_message(user_id, "Ваш ответ принят...")
-        backend_process_answer(user_id, user_response, response_type)  # Вызываем метод бэкенда для обработки ответа
+        bot.send_message(user_id, "Ваш ответ принят. Пожалуйста, ожидайте проверку...")
+        try:
+            # Добавим логирование для отслеживания данных
+            logging.info(
+                f"Processing answer for user {user_id} with question {question['id']} and response type {response_type}")
+            result, comment = backend_process_answer(user_id, user_response,
+                                                     response_type)  # Вызываем метод бэкенда для обработки ответа
+            bot.send_message(user_id, result)
+            bot.send_message(user_id, comment)
+        except Exception as e:
+            logging.error(f"Error processing answer: {e}")
+            bot.send_message(user_id, "Произошла ошибка при обработке вашего ответа. Пожалуйста, попробуйте снова.")
+
         show_menu(user_id)
+        user_states[user_id] = ("menu", None)
     else:
         bot.send_message(user_id, "Пожалуйста, выберите действие из меню.")
 
@@ -101,12 +120,13 @@ def skip_question(user_id):
 # Словарь для обработки текстовых сообщений
 commands = {
     "🚀 Старт": handle_start,
-    "🚀 Начать интервью": start_interview,
-    "📊 Запросить отчет": lambda user_id: bot.send_message(user_id, backend_get_report(user_id)),
-    "🔄 Обнулить результат": lambda user_id: bot.send_message(user_id, "Ваш результат был обнулен."),
-    "ℹ️ Описание бота": lambda user_id: bot.send_message(user_id,
+    "🚀 Начать интервью": lambda message: start_interview(message.from_user.id),
+    "📊 Запросить отчет": lambda message: bot.send_message(message.from_user.id,
+                                                          backend_get_report(message.from_user.id)),
+    "🔄 Обнулить результат": lambda message: bot.send_message(message.from_user.id, "Ваш результат был обнулен."),
+    "ℹ️ Описание бота": lambda message: bot.send_message(message.from_user.id,
                                                          "Этот бот предназначен для тренировки навыков интервью по Python."),
-    "⛔️ Пропустить вопрос": lambda user_id: skip_question(user_id)
+    "⛔️ Пропустить вопрос": lambda message: skip_question(message.from_user.id)
 }
 
 
@@ -116,8 +136,8 @@ commands = {
 def handle_text(message):
     user_id = message.from_user.id
     if message.text in commands:
-        commands[message.text](user_id)
-    elif user_states.get(user_id) == "waiting_for_answer":
+        commands[message.text](message)
+    elif user_states.get(user_id) and user_states[user_id][0] == "waiting_for_answer":
         handle_answer(message)
     else:
         bot.send_message(user_id, "Добро пожаловать. Пожалуйста, выберите действие из меню.")
