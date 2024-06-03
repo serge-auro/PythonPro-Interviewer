@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 import sqlite3
 from telebot import types
 from backend import (init_user as backend_init_user, get_report as backend_get_report, skip_timer as backend_skip_timer,
-                     get_question as backend_get_question, process_answer as backend_process_answer)
+                     get_question as backend_get_question, process_answer as backend_process_answer, update_user_stat)
 
 # Настройка логирования
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -87,6 +87,7 @@ def handle_answer(message):
             file = bot.download_file(file_info.file_path)
             user_response = file  # Здесь вместо простого присвоения вы можете сохранить файл и передать путь к нему
             response_type = "audio"
+            bot.send_message(user_id, "Распознаю аудио, ожидайте, пожалуйста...")
         else:
             bot.send_message(user_id, "Пожалуйста, отправьте текстовое сообщение или аудио.")
             return
@@ -98,8 +99,13 @@ def handle_answer(message):
                 f"Processing answer for user {user_id} with question {question['id']} and response type {response_type}")
             result, comment = backend_process_answer(user_id, user_response,
                                                      response_type)  # Вызываем метод бэкенда для обработки ответа
+
             bot.send_message(user_id, result)
             bot.send_message(user_id, comment)
+
+            # Запись в user_stat, если ответ верный
+            if result.lower() == "верно":  # Проверяем, что результат соответствует "Верно"
+                update_user_stat(user_id, question['id'], is_correct=1)
         except Exception as e:
             logging.error(f"Error processing answer: {e}")
             bot.send_message(user_id, "Произошла ошибка при обработке вашего ответа. Пожалуйста, попробуйте снова.")

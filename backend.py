@@ -332,3 +332,11 @@ def skip_timer(user_id):
 
     cursor.execute(query, (user_id,))
     conn.close()
+
+def update_user_stat(user_id, question_id, is_correct):
+    conn = sqlite3.connect('sqlite.db')
+    cursor = conn.cursor()
+    cursor.execute("INSERT OR REPLACE INTO user_stat (user_id, question_id, correct, timestamp) VALUES (?, ?, ?, ?)",
+                   (user_id, question_id, is_correct, datetime.now()))
+    conn.commit()
+    conn.close()
