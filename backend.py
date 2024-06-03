@@ -10,24 +10,16 @@ import random
 import time
 import numpy as np
 import ffmpeg
-import logging
 
 TYPE = ("text", "audio", "empty")
-
-# Настройка логирования
-logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
-
 
 # Загрузка модели Whisper вне функций для улучшения производительности
 model = whisper.load_model('small')  # Или 'base' 'small' 'medium' 'large'
 
-
-# Инициализация пользоавтеля
+# Инициализация пользователя
 def init_user(user_id):
     conn = sqlite3.connect('sqlite.db')
     cursor = conn.cursor()
-
-    print(f"DEBUG: Checking if user '{user_id}' exists in the database.")
 
     # Проверка, существует ли уже такой пользователь
     cursor.execute("SELECT id FROM user WHERE id = ?", (user_id,))
@@ -36,18 +28,15 @@ def init_user(user_id):
     if result:
         # Если пользователь найден, обновляем его статус active
         cursor.execute("UPDATE user SET active = ? WHERE id = ?", (True, user_id))
-        print(f"User with ID {user_id} already exists in the database and is now active.")
     else:
         # Если пользователь не найден, добавляем его
         date_created = datetime.now().strftime('%Y-%m-%d')
         cursor.execute("INSERT INTO user (id, active, date_created) VALUES (?, ?, ?)",
                        (user_id, True, date_created))
-        print(f"User with ID {user_id} added to the database.")
 
     conn.commit()
     conn.close()
     return user_id
-
 
 # Запрос статистики
 def get_report(user_id):
@@ -89,11 +78,6 @@ def get_report(user_id):
 
     return report
 
-    # return ("Количество заданных вопросов ***\n "
-    #         "Правильных ответов **%\n"
-    #         "Неправильных **%")
-
-
 # Получение вопроса
 def get_question(user_id):
     conn = sqlite3.connect('sqlite.db')  # Подключение к базе данных
@@ -116,24 +100,31 @@ def get_question(user_id):
 
         question_id, question_text = random.choice(questions)  # Выбор случайного вопроса из списка
         question = {"id": question_id, "name": question_text}
+
+        # Запись вопроса в таблицу user_notify
+        # insert_query = '''
+        # INSERT OR REPLACE INTO user_notify (user_id, question_id, active) VALUES (?, ?, 1)
+        # '''
+        cursor.execute(insert_query, (user_id, question_id))
+        conn.commit()
+
         set_timer(user_id, question_id)
 
         return question  # Возвращает текст случайного вопроса
 
     except sqlite3.Error as e:  # Обработка исключения SQLite
-        print("Ошибка SQLite:", e)  # Вывод сообщения об ошибке
         return "Произошла ошибка при работе с базой данных. Пожалуйста, попробуйте позже."
 
     finally:
         conn.close()  # Закрытие соединения с базой данных в любом случае, даже если возникло исключение
 
-
 # Получение ответа (ChatGPT)
-def process_answer(user_id, data, type : TYPE):
+def process_answer(user_id, data, type: TYPE):
     conn = sqlite3.connect('sqlite.db')
     cursor = conn.cursor()
     question_id = 0
     question_text = ""
+
     query = '''
         SELECT qq.id, qq.name
           FROM user_notify as un, question as qq
@@ -141,29 +132,46 @@ def process_answer(user_id, data, type : TYPE):
            AND qq.active = 1
            AND un.active = 1
            AND un.user_id = ? LIMIT 1
-        '''
-    cursor.execute(query, (user_id,))
-    result = cursor.fetchone()
-    if result:
-        question_id, question_text = result
+    '''
 
-    if type == "audio":
-        user_answer = audio_to_text(data)
-    elif type == "empty":
-        return None
-    else:
-        user_answer = data
+    try:
+        cursor.execute(query, (user_id,))
+        result = cursor.fetchone()
+        if result:
+            question_id, question_text = result
+        else:
+            return "Ошибка", "Активный вопрос не найден."
 
-    user_response = ask_chatgpt((question_text, user_answer))
+        if type == "audio":
+            try:
+                user_answer = audio_to_text(data)
+            except Exception as e:
+                return "Ошибка", "Ошибка при распознавании аудиофайла."
+        elif type == "empty":
+            return "Ошибка", "Пустой ответ."
+        else:
+            user_answer = data
 
-    # Сохранение ответа в БД
-    cursor.execute("INSERT OR REPLACE INTO user_stat (user_id, question_id, correct, timestamp) VALUES (?, ?, ?, ?)",
-                   (user_id, question_id, user_response['result'] == 'correct', datetime.now()))
-    conn.commit()
-    conn.close()
+        user_response = ask_chatgpt((question_text, user_answer))
+
+        # Сохранение ответа в БД
+        cursor.execute(
+            "INSERT OR REPLACE INTO user_stat (user_id, question_id, correct, timestamp) VALUES (?, ?, ?, ?)",
+            (user_id, question_id, user_response['result'] == 'correct', datetime.now()))
+
+        # Деактивация вопроса в user_notify
+        skip_timer(user_id, question_id)
+        # cursor.execute("UPDATE user_notify SET active = 0 WHERE user_id = ? AND question_id = ?",
+        #                (user_id, question_id))
+        #
+        # conn.commit()
+
+    except sqlite3.Error as e:
+        return "Ошибка", "Ошибка при сохранении вашего ответа."
+    finally:
+        conn.close()
 
     return user_response['result'], user_response['comment']
-
 
 # Запрос к OpenAI
 def ask_chatgpt(question_pack: tuple):
@@ -194,32 +202,22 @@ def ask_chatgpt(question_pack: tuple):
 
     return response
 
-
 # Функция для скачивания голосового сообщения
 def download_audio_file(file_id, bot_token=BOT_TOKEN):
-    logging.info("Downloading audio file...")
-    start_time = time.time()
     file_url = f"https://api.telegram.org/bot{bot_token}/getFile?file_id={file_id}"
     response = requests.get(file_url)
     if response.status_code != 200:
-        logging.error(f"Failed to get file info: {response.content}")
         return None
     file_path = response.json()['result']['file_path']
     download_url = f"https://api.telegram.org/file/bot{bot_token}/{file_path}"
     audio_response = requests.get(download_url)
     if audio_response.status_code != 200:
-        logging.error(f"Failed to download file: {audio_response.content}")
         return None
     audio_data = io.BytesIO(audio_response.content)
-    end_time = time.time()
-    logging.info(f"Audio file downloaded in {end_time - start_time} seconds.")
     return audio_data
-
 
 # Функция для преобразования аудио в массив NumPy
 def audio_to_numpy(audio_data):
-    logging.info("Converting audio data to numpy array...")
-    start_time = time.time()
     try:
         # Использование ffmpeg для декодирования байтового потока в массив NumPy
         audio_np, _ = (
@@ -229,43 +227,29 @@ def audio_to_numpy(audio_data):
             .run(input=audio_data.read(), capture_stdout=True, capture_stderr=True)
         )
     except Exception as e:
-        logging.error(f"FFmpeg error: {e}")
         return None
     audio_np = np.frombuffer(audio_np, np.int16).astype(np.float32)
     audio_np = audio_np / 32768.0  # Нормализация
     audio_np = audio_np.flatten()
-    end_time = time.time()
-    logging.info(f"Audio data converted to numpy array in {end_time - start_time} seconds.")
     return audio_np
-
 
 # Функция для преобразования аудио в текст
 def audio_to_text(file_id):
-    logging.info("Converting audio to text...")
-    start_time = time.time()
     audio_data = download_audio_file(file_id)
     if audio_data is None:
-        logging.error("Failed to download audio file.")
         return None
     audio_np = audio_to_numpy(audio_data)
     if audio_np is None:
-        logging.error("Failed to convert audio to numpy array.")
         return None
     try:
         result = model.transcribe(audio_np, language='ru')
     except Exception as e:
-        logging.error(f"Whisper model error: {e}")
         return None
-    end_time = time.time()
-    logging.info(f"Audio converted to text in {end_time - start_time} seconds.")
     return result['text']
-
 
 # Отслеживание уведомлений
 def get_notify(user_id):
-    # TODO добавить вопрос
     process_answer(user_id, "я не знаю", "empty")
-
 
 # Создаём таймер - в БД
 def set_timer(user_id, question_id):
@@ -276,12 +260,11 @@ def set_timer(user_id, question_id):
     timedate = current_datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
     cursor.execute("INSERT INTO user_notify (user_id, question_id, timedate, active) VALUES (?, ?, ?, ?)",
-                   (user_id, question_id, timedate, True))
+                   (user_id, question_id, timedate, 1))
     conn.close()
 
-
 # Удаление уведомлений
-def skip_timer(user_id):
+def skip_timer(user_id, question_id):
     conn = sqlite3.connect('sqlite.db')
     cursor = conn.cursor()
 
@@ -291,8 +274,16 @@ def skip_timer(user_id):
               FROM user_notify
              WHERE user_id = ?
                AND active = 1
-               AND question_id > 0
+               AND question_id ?
         '''
 
-    cursor.execute(query, (user_id,))
+    cursor.execute(query, (user_id, question_id))
+    conn.close()
+
+def update_user_stat(user_id, question_id, is_correct):
+    conn = sqlite3.connect('sqlite.db')
+    cursor = conn.cursor()
+    cursor.execute("INSERT OR REPLACE INTO user_stat (user_id, question_id, correct, timestamp) VALUES (?, ?, ?, ?)",
+                   (user_id, question_id, is_correct, datetime.now()))
+    conn.commit()
     conn.close()
