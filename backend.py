@@ -139,6 +139,7 @@ def get_question(user_id):
 
 # Получение ответа (ChatGPT)
 def process_answer(user_id, data, type: str):
+    logging.info(f"Starting process_answer with type: {type}")
     conn = sqlite3.connect('sqlite.db')
     cursor = conn.cursor()
     question_id = 0
@@ -173,13 +174,19 @@ def process_answer(user_id, data, type: str):
             return "Ошибка", "Активный вопрос не найден."
 
         if type == "audio":
-            user_answer = audio_to_text(data)
+            try:
+                user_answer = audio_to_text(data)
+                logging.info(f"Audio converted to text: {user_answer}")
+            except Exception as e:
+                logging.error(f"Error converting audio to text: {e}")
+                return "Ошибка", "Ошибка при распознавании аудиофайла."
         elif type == "empty":
             return "Ошибка", "Пустой ответ."
         else:
             user_answer = data
 
         user_response = ask_chatgpt((question_text, user_answer))
+        logging.info(f"ChatGPT response: {user_response}")
 
         # Сохранение ответа в БД
         cursor.execute(
@@ -289,13 +296,13 @@ def audio_to_text(file_id):
         return None
     try:
         result = model.transcribe(audio_np, language='ru')
+        logging.info(f"Transcription result: {result}")
     except Exception as e:
         logging.error(f"Whisper model error: {e}")
         return None
     end_time = time.time()
     logging.info(f"Audio converted to text in {end_time - start_time} seconds.")
     return result['text']
-
 
 # Отслеживание уведомлений
 def get_notify(user_id):

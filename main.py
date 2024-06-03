@@ -74,20 +74,31 @@ def start_interview(user_id):
 # Функция для обработки ответов
 @error_handler
 def handle_answer(message):
+    logging.info(f"Entering handle_answer function")
     user_id = message.from_user.id
     user_state = user_states.get(user_id)
+    logging.info(f"Получил {message.content_type}")
 
     if user_state and user_state[0] == "waiting_for_answer":
         question = user_state[1]
+        logging.info(f"Получил {message.content_type} в ветке {user_state[0]}")
         if message.content_type == 'text':
             user_response = message.text
             response_type = "text"
         elif message.content_type == 'voice':
-            file_info = bot.get_file(message.voice.file_id)
-            file = bot.download_file(file_info.file_path)
-            user_response = file  # Здесь вместо простого присвоения вы можете сохранить файл и передать путь к нему
-            response_type = "audio"
-            bot.send_message(user_id, "Распознаю аудио, ожидайте, пожалуйста...")
+            logging.info(f"Получил аудио сообщение")
+            try:
+                file_info = bot.get_file(message.voice.file_id)
+                logging.info(f"file_info: {file_info}")
+                file = bot.download_file(file_info.file_path)
+                logging.info(f"file downloaded: {len(file)} bytes")
+                user_response = file  # Здесь вместо простого присвоения вы можете сохранить файл и передать путь к нему
+                response_type = "audio"
+                bot.send_message(user_id, "Распознаю аудио, ожидайте, пожалуйста...")
+            except Exception as e:
+                logging.error(f"Error downloading audio file: {e}")
+                bot.send_message(user_id, "Произошла ошибка при загрузке аудиофайла. Пожалуйста, попробуйте снова.")
+                return
         else:
             bot.send_message(user_id, "Пожалуйста, отправьте текстовое сообщение или аудио.")
             return
@@ -95,10 +106,8 @@ def handle_answer(message):
         bot.send_message(user_id, "Ваш ответ принят. Пожалуйста, ожидайте проверку...")
         try:
             # Добавим логирование для отслеживания данных
-            logging.info(
-                f"Processing answer for user {user_id} with question {question['id']} and response type {response_type}")
-            result, comment = backend_process_answer(user_id, user_response,
-                                                     response_type)  # Вызываем метод бэкенда для обработки ответа
+            logging.info(f"Processing answer for user {user_id} with question {question['id']} and response type {response_type}")
+            result, comment = backend_process_answer(user_id, user_response, response_type)  # Вызываем метод бэкенда для обработки ответа
 
             bot.send_message(user_id, result)
             bot.send_message(user_id, comment)
@@ -141,7 +150,22 @@ commands = {
 @error_handler
 def handle_text(message):
     user_id = message.from_user.id
+    logging.info(f"Received a message of type {message.content_type}")
     if message.text in commands:
+        commands[message.text](message)
+    elif user_states.get(user_id) and user_states[user_id][0] == "waiting_for_answer":
+        handle_answer(message)
+    else:
+        bot.send_message(user_id, "Добро пожаловать. Пожалуйста, выберите действие из меню.")
+
+
+@bot.message_handler(content_types=['text', 'voice'])
+@error_handler
+def handle_text_and_voice(message):
+    user_id = message.from_user.id
+    logging.info(f"Received a message of type {message.content_type}")
+
+    if message.content_type == 'text' and message.text in commands:
         commands[message.text](message)
     elif user_states.get(user_id) and user_states[user_id][0] == "waiting_for_answer":
         handle_answer(message)
