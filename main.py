@@ -24,14 +24,11 @@ def error_handler(func):
         try:
             return func(*args, **kwargs)
         except Exception as e:
-            logging.error(f"Error in {func.__name__}: {e}")
             bot.stop_polling()
             time.sleep(5)  # Дайте немного времени перед перезапуском
             if args and args[0] and hasattr(args[0], 'chat'):
                 handle_start(args[0])  # Вызов стартового меню
-
     return wrapper
-
 
 # Обработчик команды /start
 @bot.message_handler(commands=['start'])
@@ -41,7 +38,6 @@ def handle_start(message):
     backend_init_user(user_id)
     bot.send_message(user_id, "Я твой бот-интервьюер по Python")
     show_menu(user_id)
-
 
 # Функция для отображения основного меню
 def show_menu(user_id):
@@ -53,7 +49,6 @@ def show_menu(user_id):
 
     markup.add(button_start_interview, button_request_report, button_reset_result, button_description)
     bot.send_message(user_id, "Выберите действие:", reply_markup=markup)
-
 
 # Функция для начала интервью
 @error_handler
@@ -68,35 +63,26 @@ def start_interview(user_id):
         bot.send_message(user_id, question["name"], reply_markup=markup)
     else:
         bot.send_message(user_id, "Ошибка при получении вопроса. Пожалуйста, попробуйте снова.")
-        logging.error(f"Invalid question format: {question}")
-
 
 # Функция для обработки ответов
 @error_handler
 def handle_answer(message):
-    logging.info(f"Entering handle_answer function")
     user_id = message.from_user.id
     user_state = user_states.get(user_id)
-    logging.info(f"Получил {message.content_type}")
 
     if user_state and user_state[0] == "waiting_for_answer":
         question = user_state[1]
-        logging.info(f"Получил {message.content_type} в ветке {user_state[0]}")
         if message.content_type == 'text':
             user_response = message.text
             response_type = "text"
         elif message.content_type == 'voice':
-            logging.info(f"Получил аудио сообщение")
             try:
                 file_info = bot.get_file(message.voice.file_id)
-                logging.info(f"file_info: {file_info}")
                 file = bot.download_file(file_info.file_path)
-                logging.info(f"file downloaded: {len(file)} bytes")
                 user_response = file  # Здесь вместо простого присвоения вы можете сохранить файл и передать путь к нему
                 response_type = "audio"
                 bot.send_message(user_id, "Распознаю аудио, ожидайте, пожалуйста...")
             except Exception as e:
-                logging.error(f"Error downloading audio file: {e}")
                 bot.send_message(user_id, "Произошла ошибка при загрузке аудиофайла. Пожалуйста, попробуйте снова.")
                 return
         else:
@@ -105,10 +91,7 @@ def handle_answer(message):
 
         bot.send_message(user_id, "Ваш ответ принят. Пожалуйста, ожидайте проверку...")
         try:
-            # Добавим логирование для отслеживания данных
-            logging.info(f"Processing answer for user {user_id} with question {question['id']} and response type {response_type}")
             result, comment = backend_process_answer(user_id, user_response, response_type)  # Вызываем метод бэкенда для обработки ответа
-
             bot.send_message(user_id, result)
             bot.send_message(user_id, comment)
 
@@ -116,7 +99,6 @@ def handle_answer(message):
             if result.lower() == "верно":  # Проверяем, что результат соответствует "Верно"
                 update_user_stat(user_id, question['id'], is_correct=1)
         except Exception as e:
-            logging.error(f"Error processing answer: {e}")
             bot.send_message(user_id, "Произошла ошибка при обработке вашего ответа. Пожалуйста, попробуйте снова.")
 
         show_menu(user_id)
@@ -124,33 +106,27 @@ def handle_answer(message):
     else:
         bot.send_message(user_id, "Пожалуйста, выберите действие из меню.")
 
-
 # Функция для пропуска вопроса
 @error_handler
 def skip_question(user_id):
     backend_skip_timer(user_id)
     show_menu(user_id)
 
-
 # Словарь для обработки текстовых сообщений
 commands = {
     "🚀 Старт": handle_start,
     "🚀 Начать интервью": lambda message: start_interview(message.from_user.id),
-    "📊 Запросить отчет": lambda message: bot.send_message(message.from_user.id,
-                                                          backend_get_report(message.from_user.id)),
+    "📊 Запросить отчет": lambda message: bot.send_message(message.from_user.id, backend_get_report(message.from_user.id)),
     "🔄 Обнулить результат": lambda message: bot.send_message(message.from_user.id, "Ваш результат был обнулен."),
-    "ℹ️ Описание бота": lambda message: bot.send_message(message.from_user.id,
-                                                         "Этот бот предназначен для тренировки навыков интервью по Python."),
+    "ℹ️ Описание бота": lambda message: bot.send_message(message.from_user.id, "Этот бот предназначен для тренировки навыков интервью по Python."),
     "⛔️ Пропустить вопрос": lambda message: skip_question(message.from_user.id)
 }
-
 
 # Обработчик текстовых сообщений
 @bot.message_handler(func=lambda message: True)
 @error_handler
 def handle_text(message):
     user_id = message.from_user.id
-    logging.info(f"Received a message of type {message.content_type}")
     if message.text in commands:
         commands[message.text](message)
     elif user_states.get(user_id) and user_states[user_id][0] == "waiting_for_answer":
@@ -158,12 +134,10 @@ def handle_text(message):
     else:
         bot.send_message(user_id, "Добро пожаловать. Пожалуйста, выберите действие из меню.")
 
-
 @bot.message_handler(content_types=['text', 'voice'])
 @error_handler
 def handle_text_and_voice(message):
     user_id = message.from_user.id
-    logging.info(f"Received a message of type {message.content_type}")
 
     if message.content_type == 'text' and message.text in commands:
         commands[message.text](message)
@@ -172,11 +146,9 @@ def handle_text_and_voice(message):
     else:
         bot.send_message(user_id, "Добро пожаловать. Пожалуйста, выберите действие из меню.")
 
-
 # Основной цикл для опроса и обработки сообщений
 while True:
     try:
         bot.polling(none_stop=True)
     except Exception as e:
-        logging.error(f"Error: {e}")
         time.sleep(1)
