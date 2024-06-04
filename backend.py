@@ -311,3 +311,59 @@ def skip_question(user_id):
                    (user_id,))
     conn.commit()
     conn.close()
+
+
+def change_user_time(user_id):
+    conn = sqlite3.connect('sqlite.db')
+    cursor = conn.cursor()
+    try:
+        # Обновление времени на ответ пользователя
+        cursor.execute('''
+            UPDATE user
+               SET user_minute = CASE 
+                   WHEN user_minute + 1 > 3 THEN 1
+                   ELSE user_minute + 1
+               END
+             WHERE id = ?
+        ''', (user_id,))
+        conn.commit()
+
+        # Получение текущего времени на ответ пользователя
+        cursor.execute('SELECT user_minute FROM user WHERE id = ?', (user_id,))
+        user_minute = cursor.fetchone()[0]
+
+        return f"Текущее время на ответ {user_minute} мин."
+    except sqlite3.Error as e:
+        print(f"SQLite error: {e}")
+        return "Произошла ошибка при изменении времени на ответ."
+    finally:
+        conn.close()
+
+
+def change_user_level(user_id):
+    conn = sqlite3.connect('sqlite.db')
+    cursor = conn.cursor()
+    try:
+        # Обновление уровня пользователя
+        cursor.execute('''
+            UPDATE user
+               SET user_lvl = CASE 
+                   WHEN user_lvl = 'junior' THEN 'middle'
+                   WHEN user_lvl = 'middle' THEN 'senior'
+                   WHEN user_lvl = 'senior' THEN 'junior'
+                   ELSE 'junior'
+               END
+             WHERE id = ?
+        ''', (user_id,))
+        conn.commit()
+
+        # Получение текущего уровня пользователя
+        cursor.execute('SELECT user_lvl FROM user WHERE id = ?', (user_id,))
+        user_lvl = cursor.fetchone()[0]
+
+        return f"Твой текущий уровень {user_lvl}."
+    except sqlite3.Error as e:
+        print(f"SQLite error: {e}")
+        return "Произошла ошибка при изменении уровня пользователя."
+    finally:
+        conn.close()

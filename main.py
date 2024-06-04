@@ -7,7 +7,8 @@ import sqlite3
 from telebot import types
 from backend import (init_user as backend_init_user, get_report as backend_get_report, skip_timer as backend_skip_timer,
                      get_question as backend_get_question, process_answer as backend_process_answer, update_user_stat,
-                     clear_user_stat as be_clear_user_stat)
+                     clear_user_stat as be_clear_user_stat, get_settings as backend_get_settings,
+                     change_user_level as backend_change_user_level, change_user_time as backend_change_user_time)
 
 # Настройка логирования
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -17,7 +18,6 @@ user_states = {}
 
 # Вывод сообщения о запуске бота
 logging.info("PythonPro Interviewer is being started")
-
 
 # Декоратор - Обработчик ошибок
 def error_handler(func):
@@ -45,11 +45,23 @@ def show_menu(user_id):
     markup = types.ReplyKeyboardMarkup(row_width=2, resize_keyboard=True)
     button_start_interview = types.KeyboardButton("🚀 Начать интервью")
     button_request_report = types.KeyboardButton("📊 Запросить отчет")
-    button_reset_result = types.KeyboardButton("🔄 Обнулить результат")
+    button_settings = types.KeyboardButton("⚙️ Настройки")
     button_description = types.KeyboardButton("ℹ️ Описание бота")
 
-    markup.add(button_start_interview, button_request_report, button_reset_result, button_description)
+    markup.add(button_start_interview, button_request_report, button_settings, button_description)
     bot.send_message(user_id, "Выберите действие:", reply_markup=markup)
+
+# Функция для отображения меню настроек
+def show_settings_menu(user_id):
+    backend_get_settings(user_id)
+    markup = types.ReplyKeyboardMarkup(row_width=2, resize_keyboard=True)
+    button_back = types.KeyboardButton("🔙 Назад")
+    button_reset_result = types.KeyboardButton("🔄 Обнулить результат")
+    button_change_level = types.KeyboardButton("💪 Изменить уровень")
+    button_change_time = types.KeyboardButton("⏰ Изменить время ответа")
+
+    markup.add(button_back, button_reset_result, button_change_level, button_change_time)
+    bot.send_message(user_id, "Настройки:", reply_markup=markup)
 
 # Функция для начала интервью
 @error_handler
@@ -118,15 +130,31 @@ def clear_user_stat(user_id):
     be_clear_user_stat(user_id)
     show_menu(user_id)
 
+# Функция для обработки изменения уровня
+def handle_change_level(user_id):
+    backend_change_user_level(user_id)
+    bot.send_message(user_id, "Уровень изменен.")
+    show_menu(user_id)
+
+# Функция для обработки изменения времени ответа
+def handle_change_time(user_id):
+    backend_change_user_time(user_id)
+    bot.send_message(user_id, "Время ответа изменено.")
+    show_menu(user_id)
+
 # Словарь для обработки текстовых сообщений
 commands = {
     "🚀 Старт": handle_start,
     "🚀 Начать интервью": lambda message: start_interview(message.from_user.id),
     "📊 Запросить отчет": lambda message: bot.send_message(message.from_user.id, backend_get_report(message.from_user.id)),
+    "⚙️ Настройки": lambda message: show_settings_menu(message.from_user.id),
+    "🔙 Назад": lambda message: show_menu(message.from_user.id),
     "🔄 Обнулить результат": lambda message: (
         clear_user_stat(message.from_user.id),
         bot.send_message(message.from_user.id, "Ваш результат был обнулен.")
     ),
+    "💪 Изменить уровень": lambda message: handle_change_level(message.from_user.id),
+    "⏰ Изменить время ответа": lambda message: handle_change_time(message.from_user.id),
     "ℹ️ Описание бота": lambda message: bot.send_message(message.from_user.id, "Этот бот предназначен для тренировки навыков интервью по Python."),
     "⛔️ Пропустить вопрос": lambda message: skip_question(message.from_user.id)
 }
