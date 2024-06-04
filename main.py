@@ -96,9 +96,9 @@ def handle_answer(message):
             bot.send_message(user_id, result)
             bot.send_message(user_id, comment)
 
-            # Запись в user_stat, если ответ верный
-            if result.lower() == "верно":  # Проверяем, что результат соответствует "Верно"
-                update_user_stat(user_id, question['id'], is_correct=1)
+            # # Запись в user_stat, если ответ верный
+            # if result.lower() == "верно":  # Проверяем, что результат соответствует "Верно"
+            #     update_user_stat(user_id, question['id'], 1)
         except Exception as e:
             bot.send_message(user_id, "Произошла ошибка при обработке вашего ответа. Пожалуйста, попробуйте снова.")
 

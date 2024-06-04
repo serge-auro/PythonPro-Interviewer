@@ -31,15 +31,15 @@ def notify_users():
             logging.info(f"Sending notification {user_id} user with {question_id} question.")
             get_notify(user_id)
 
-        # Опционально, обновить записи, чтобы они больше не были активны
-        cursor.execute('''
-        UPDATE user_notify
-           SET active = 0
-         WHERE timedate <= ?
-           AND active = 1
-        ''', (current_time,))
-
-        conn.commit()
+        # # Опционально, обновить записи, чтобы они больше не были активны
+        # cursor.execute('''
+        # UPDATE user_notify
+        #    SET active = 0
+        #  WHERE timedate <= ?
+        #    AND active = 1
+        # ''', (current_time,))
+        #
+        # conn.commit()
     except sqlite3.Error as e:
         print("SQLite error:", e)
     finally:
