@@ -131,7 +131,7 @@ def process_answer(user_id, data, type: TYPE):
             return "Ошибка", "Некорректный формат ответа от ChatGPT."
 
         insert_user_stat(user_id, question_id, correct)
-        deactivate_user_question(user_id, question_id)
+        skip_question(user_id)
 
     except sqlite3.Error as e:
         return "Ошибка", f"Ошибка при сохранении вашего ответа: {str(e)}"
@@ -242,7 +242,7 @@ def skip_timer(user_id, question_id):
               FROM user_notify
              WHERE user_id = ?
                AND active = 1
-               AND question_id ?
+               AND question_id = ?
         '''
 
     cursor.execute(query, (user_id, question_id))
@@ -276,11 +276,11 @@ def get_active_question(user_id):
     cursor = conn.cursor()
     query = '''
         SELECT qq.id, qq.name
-        FROM user_notify as un, question as qq
-        WHERE un.question_id = qq.id
+        FROM user_stat as us, question as qq
+        WHERE us.question_id = qq.id
           AND qq.active = 1
-          AND un.active = 1
-          AND un.user_id = ? LIMIT 1
+          AND us.active = 1
+          AND us.user_id = ? LIMIT 1
     '''
     cursor.execute(query, (user_id,))
     result = cursor.fetchone()
@@ -296,10 +296,10 @@ def insert_user_stat(user_id, question_id, correct):
     conn.commit()
     conn.close()
 
-def deactivate_user_question(user_id, question_id):
+def skip_question(user_id):
     conn = sqlite3.connect('sqlite.db')
     cursor = conn.cursor()
-    cursor.execute("UPDATE user_notify SET active = 0 WHERE user_id = ? AND question_id = ?",
-                   (user_id, question_id))
+    cursor.execute("UPDATE user_notify SET active = 0 WHERE user_id = ?",
+                   (user_id))
     conn.commit()
     conn.close()
