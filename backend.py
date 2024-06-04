@@ -15,14 +15,14 @@ TYPE = ("text", "audio", "empty")
 # Загрузка модели Whisper вне функций для улучшения производительности
 model = whisper.load_model('small')  # Или 'base' 'small' 'medium' 'large'
 
+
 # Инициализация пользователя
 def init_user(user_id):
     conn = sqlite3.connect('sqlite.db')
     cursor = conn.cursor()
 
-    date_created = datetime.now().strftime('%Y-%m-%d')
-    cursor.execute("INSERT OR REPLACE user (id, active, date_created) VALUES (?, ?, ?)",
-                   (user_id, True, date_created))
+    cursor.execute("INSERT OR REPLACE INTO user (id, active) VALUES (?, ?)",
+                   (user_id, 1))
 
     conn.commit()
     conn.close()
@@ -120,7 +120,7 @@ def process_answer(user_id, data, type: TYPE):
         else:
             return "Ошибка", "Некорректный формат ответа от ChatGPT."
 
-        insert_user_stat(user_id, question_id, correct)
+        update_user_stat(user_id, question_id, correct)
         skip_question(user_id)
 
     except sqlite3.Error as e:
@@ -216,26 +216,25 @@ def set_timer(user_id, question_id):
     current_datetime = datetime.now() + timedelta(minutes=2)
     timedate = current_datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
-    cursor.execute("INSERT OR REPLACE user_notify (user_id, question_id, timedate, active) VALUES (?, ?, ?, ?)",
+    cursor.execute("INSERT OR REPLACE INTO user_notify (user_id, question_id, timedate, active) VALUES (?, ?, ?, ?)",
                    (user_id, question_id, timedate, 1))
     conn.commit()
     conn.close()
 
 # Удаление уведомлений
-def skip_timer(user_id, question_id):
+def skip_timer(user_id):
     conn = sqlite3.connect('sqlite.db')
     cursor = conn.cursor()
 
     # SQL-запрос для получения статистики
     query = '''
-            UPDATE active = 0
-              FROM user_notify
+            UPDATE user_notify
+               SET active = 0
              WHERE user_id = ?
                AND active = 1
-               AND question_id = ?
         '''
 
-    cursor.execute(query, (user_id, question_id))
+    cursor.execute(query, (user_id,))
     conn.commit()
     conn.close()
 

@@ -37,7 +37,7 @@ def error_handler(func):
 def handle_start(message):
     user_id = message.from_user.id
     backend_init_user(user_id)
-    bot.send_message(user_id, "Я твой бот-интервьюер по Python")
+    bot.send_message(user_id, "Привет! Я твой бот-интервьюер по Python")
     show_menu(user_id)
 
 # Функция для отображения основного меню
@@ -141,7 +141,7 @@ def handle_text(message):
     elif user_states.get(user_id) and user_states[user_id][0] == "waiting_for_answer":
         handle_answer(message)
     else:
-        bot.send_message(user_id, "Добро пожаловать. Пожалуйста, выберите действие из меню.")
+        bot.send_message(user_id, "Пожалуйста, выберите действие из меню.")
 
 @bot.message_handler(content_types=['text', 'voice'])
 @error_handler
