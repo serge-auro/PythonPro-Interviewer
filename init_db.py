@@ -14,7 +14,8 @@ def init_db():
             active BOOLEAN DEFAULT 1,
             date_created DATE DEFAULT CURRENT_DATE,
             user_lvl TEXT DEFAULT 'junior',
-            user_minute INTEGER DEFAULT 2
+            user_minute INTEGER DEFAULT 2,
+            UNIQUE(id)
         );
        '''
 
@@ -25,7 +26,8 @@ def init_db():
             answer TEXT,
             active BOOLEAN DEFAULT 1,
             theme TEXT,
-            rate INTEGER
+            rate INTEGER,
+            UNIQUE(id)
         );
         '''
 
@@ -47,7 +49,8 @@ def init_db():
             question_id INTEGER,
             timedate TEXT,
             active BOOLEAN DEFAULT 1,
-            FOREIGN KEY (user_id) REFERENCES user (id)
+            FOREIGN KEY (user_id) REFERENCES user (id),
+            UNIQUE(user_id, question_id)
         );
         '''
 

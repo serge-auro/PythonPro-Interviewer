@@ -6,7 +6,8 @@ from datetime import datetime, timedelta
 import sqlite3
 from telebot import types
 from backend import (init_user as backend_init_user, get_report as backend_get_report, skip_timer as backend_skip_timer,
-                     get_question as backend_get_question, process_answer as backend_process_answer, update_user_stat)
+                     get_question as backend_get_question, process_answer as backend_process_answer, update_user_stat,
+                     clear_user_stat as be_clear_user_stat)
 
 # Настройка логирования
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -36,7 +37,7 @@ def error_handler(func):
 def handle_start(message):
     user_id = message.from_user.id
     backend_init_user(user_id)
-    bot.send_message(user_id, "Я твой бот-интервьюер по Python")
+    bot.send_message(user_id, "Привет! Я твой бот-интервьюер по Python")
     show_menu(user_id)
 
 # Функция для отображения основного меню
@@ -54,7 +55,7 @@ def show_menu(user_id):
 @error_handler
 def start_interview(user_id):
     markup = types.ReplyKeyboardMarkup(row_width=1, resize_keyboard=True)
-    button_end_interview = types.KeyboardButton("⛔️ Закончить интервью")
+    button_end_interview = types.KeyboardButton("⛔️ Пропустить вопрос")
     markup.add(button_end_interview)
 
     question = backend_get_question(user_id)
@@ -112,12 +113,20 @@ def skip_question(user_id):
     backend_skip_timer(user_id)
     show_menu(user_id)
 
+@error_handler
+def clear_user_stat(user_id):
+    be_clear_user_stat(user_id)
+    show_menu(user_id)
+
 # Словарь для обработки текстовых сообщений
 commands = {
     "🚀 Старт": handle_start,
     "🚀 Начать интервью": lambda message: start_interview(message.from_user.id),
     "📊 Запросить отчет": lambda message: bot.send_message(message.from_user.id, backend_get_report(message.from_user.id)),
-    "🔄 Обнулить результат": lambda message: bot.send_message(message.from_user.id, "Ваш результат был обнулен."),
+    "🔄 Обнулить результат": lambda message: (
+        clear_user_stat(message.from_user.id),
+        bot.send_message(message.from_user.id, "Ваш результат был обнулен.")
+    ),
     "ℹ️ Описание бота": lambda message: bot.send_message(message.from_user.id, "Этот бот предназначен для тренировки навыков интервью по Python."),
     "⛔️ Пропустить вопрос": lambda message: skip_question(message.from_user.id)
 }
@@ -132,7 +141,7 @@ def handle_text(message):
     elif user_states.get(user_id) and user_states[user_id][0] == "waiting_for_answer":
         handle_answer(message)
     else:
-        bot.send_message(user_id, "Добро пожаловать. Пожалуйста, выберите действие из меню.")
+        bot.send_message(user_id, "Пожалуйста, выберите действие из меню.")
 
 @bot.message_handler(content_types=['text', 'voice'])
 @error_handler
