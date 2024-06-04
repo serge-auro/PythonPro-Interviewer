@@ -51,11 +51,21 @@ def init_db():
         );
         '''
 
+    create_question_state_table = '''
+        CREATE TABLE IF NOT EXISTS question_state (
+            user_id INTEGER,
+            question_id INTEGER,
+            active BOOLEAN,
+            PRIMARY KEY (user_id, question_id)
+        );
+    '''
+
     # Выполнение SQL - запросов
     cursor.execute(create_user_table)
     cursor.execute(create_question_table)
     cursor.execute(create_user_stat_table)
     cursor.execute(create_user_notify_table)
+    cursor.execute(create_question_state_table)
 
     # Сохранение изменений и закрытие соединения
     conn.commit()
@@ -107,10 +117,22 @@ def add_test_info():
         (1234567894, '2024-05-04 13:30:00', 1, 4),
         (1234567895, '2024-05-05 14:00:55', 0, 5)
     '''
+
+    test_question_state = '''
+    INSERT INTO question_state (user_id, question_id, active) 
+        VALUES
+        (1234567891, 1, 1),
+        (1234567892, 2, 0),
+        (1234567893, 3, 1),
+        (1234567894, 4, 1),
+        (1234567895, 5, 0)
+    '''
+
     cursor.execute(test_user)
     cursor.execute(test_question)
     cursor.execute(test_user_stat)
     cursor.execute(test_user_notify)
+    cursor.execute(test_question_state)
 
     # Сохранение изменений и закрытие соединения
     conn.commit()
@@ -149,3 +171,4 @@ view_tables("user")
 view_tables("question")
 view_tables("user_stat")
 view_tables("user_notify")
+view_tables("question_state")

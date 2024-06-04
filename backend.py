@@ -7,7 +7,6 @@ import io
 from config import BOT_TOKEN, OPENAI_API_KEY, SYSTEM_PROMPT
 from openai import OpenAI
 import random
-import time
 import numpy as np
 import ffmpeg
 
@@ -89,6 +88,7 @@ def get_question(user_id):
         question_id, question_text = random.choice(questions)  # Выбор случайного вопроса из списка
         question = {"id": question_id, "name": question_text}
 
+        activate_question_state(user_id, question_id)  # Активируем статус вопроса
         set_timer(user_id, question_id)
 
     except sqlite3.Error:
@@ -131,7 +131,7 @@ def process_answer(user_id, data, type: TYPE):
             return "Ошибка", "Некорректный формат ответа от ChatGPT."
 
         insert_user_stat(user_id, question_id, correct)
-        deactivate_user_question(user_id, question_id)
+        deactivate_question_state(user_id, question_id)
 
     except sqlite3.Error as e:
         return "Ошибка", f"Ошибка при сохранении вашего ответа: {str(e)}"
@@ -236,7 +236,6 @@ def skip_timer(user_id, question_id):
     conn = sqlite3.connect('sqlite.db')
     cursor = conn.cursor()
 
-    # SQL-запрос для получения статистики
     query = '''
             UPDATE active = 0
               FROM user_notify
@@ -276,11 +275,11 @@ def get_active_question(user_id):
     cursor = conn.cursor()
     query = '''
         SELECT qq.id, qq.name
-        FROM user_notify as un, question as qq
-        WHERE un.question_id = qq.id
+        FROM question_state as qs, question as qq
+        WHERE qs.question_id = qq.id
           AND qq.active = 1
-          AND un.active = 1
-          AND un.user_id = ? LIMIT 1
+          AND qs.active = 1
+          AND qs.user_id = ? LIMIT 1
     '''
     cursor.execute(query, (user_id,))
     result = cursor.fetchone()
@@ -296,10 +295,19 @@ def insert_user_stat(user_id, question_id, correct):
     conn.commit()
     conn.close()
 
-def deactivate_user_question(user_id, question_id):
+def activate_question_state(user_id, question_id):
     conn = sqlite3.connect('sqlite.db')
     cursor = conn.cursor()
-    cursor.execute("UPDATE user_notify SET active = 0 WHERE user_id = ? AND question_id = ?",
+    cursor.execute(
+        "INSERT OR REPLACE INTO question_state (user_id, question_id, active) VALUES (?, ?, ?)",
+        (user_id, question_id, True))
+    conn.commit()
+    conn.close()
+
+def deactivate_question_state(user_id, question_id):
+    conn = sqlite3.connect('sqlite.db')
+    cursor = conn.cursor()
+    cursor.execute("UPDATE question_state SET active = 0 WHERE user_id = ? AND question_id = ?",
                    (user_id, question_id))
     conn.commit()
     conn.close()
