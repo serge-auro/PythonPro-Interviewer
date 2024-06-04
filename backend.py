@@ -28,6 +28,7 @@ def init_user(user_id):
     conn.close()
     return user_id
 
+
 # Запрос статистики
 def get_report(user_id):
     # Подключаемся к базе данных
@@ -68,6 +69,7 @@ def get_report(user_id):
 
     return report
 
+
 # Получение вопроса
 def get_question(user_id):
     try:
@@ -76,15 +78,19 @@ def get_question(user_id):
         if not questions:  # Если список вопросов пустой
             return "Все вопросы были уже правильно отвечены или нет доступных активных вопросов."
 
-        question_id, question_text = random.choice(questions)  # Выбор случайного вопроса из списка
+        # Взвешенный выбор случайного вопроса
+        total_weights = sum(rate for _, _, rate in questions)
+        question_id, question_text, _ = random.choices(questions, weights=[rate for _, _, rate in questions], k=1)[0]
         question = {"id": question_id, "name": question_text}
 
         set_timer(user_id, question_id)
 
-    except sqlite3.Error:
+    except sqlite3.Error as e:
+        print("SQLite error:", e)
         return "Произошла ошибка при работе с базой данных. Пожалуйста, попробуйте позже."
 
     return question
+
 
 # Получение ответа (ChatGPT)
 def process_answer(user_id, data, type: TYPE):
@@ -130,6 +136,7 @@ def process_answer(user_id, data, type: TYPE):
 
     return user_response['result'], user_response['comment']
 
+
 # Запрос к OpenAI
 def ask_chatgpt(question_pack: tuple):
     """
@@ -159,6 +166,7 @@ def ask_chatgpt(question_pack: tuple):
 
     return response
 
+
 # Функция для скачивания голосового сообщения
 def download_audio_file(file_id, bot_token=BOT_TOKEN):
     file_url = f"https://api.telegram.org/bot{bot_token}/getFile?file_id={file_id}"
@@ -172,6 +180,7 @@ def download_audio_file(file_id, bot_token=BOT_TOKEN):
         return None
     audio_data = io.BytesIO(audio_response.content)
     return audio_data
+
 
 # Функция для преобразования аудио в массив NumPy
 def audio_to_numpy(audio_data):
@@ -190,6 +199,7 @@ def audio_to_numpy(audio_data):
     audio_np = audio_np.flatten()
     return audio_np
 
+
 # Функция для преобразования аудио в текст
 def audio_to_text(file_id):
     audio_data = download_audio_file(file_id)
@@ -204,9 +214,11 @@ def audio_to_text(file_id):
         return None
     return result['text']
 
+
 # Отслеживание уведомлений
 def get_notify(user_id):
     process_answer(user_id, "я не знаю", "empty")
+
 
 # Создаём таймер - в БД
 def set_timer(user_id, question_id):
@@ -220,6 +232,7 @@ def set_timer(user_id, question_id):
                    (user_id, question_id, timedate, 1))
     conn.commit()
     conn.close()
+
 
 # Удаление уведомлений
 def skip_timer(user_id):
@@ -243,7 +256,7 @@ def get_unresolved_questions(user_id):
     conn = sqlite3.connect('sqlite.db')
     cursor = conn.cursor()
     query = '''
-        SELECT q.id, q.name 
+        SELECT q.id, q.name, q.rate
         FROM question q
         LEFT JOIN user_stat us ON q.id = us.question_id AND us.user_id = ? AND us.correct = 1
         WHERE us.question_id IS NULL AND q.active = 1
@@ -253,21 +266,23 @@ def get_unresolved_questions(user_id):
     conn.close()
     return questions
 
+
 def get_active_question(user_id):
     conn = sqlite3.connect('sqlite.db')
     cursor = conn.cursor()
     query = '''
         SELECT qq.id, qq.name
-        FROM user_stat as us, question as qq
-        WHERE us.question_id = qq.id
+        FROM user_notify as un, question as qq
+        WHERE un.question_id = qq.id
           AND qq.active = 1
-          AND us.active = 1
-          AND us.user_id = ? LIMIT 1
+          AND un.active = 1
+          AND un.user_id = ? LIMIT 1
     '''
     cursor.execute(query, (user_id,))
     result = cursor.fetchone()
     conn.close()
     return result
+
 
 def update_user_stat(user_id, question_id, correct):
     conn = sqlite3.connect('sqlite.db')
