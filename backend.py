@@ -7,7 +7,6 @@ import io
 from config import BOT_TOKEN, OPENAI_API_KEY, SYSTEM_PROMPT
 from openai import OpenAI
 import random
-import time
 import numpy as np
 import ffmpeg
 
@@ -21,18 +20,9 @@ def init_user(user_id):
     conn = sqlite3.connect('sqlite.db')
     cursor = conn.cursor()
 
-    # Проверка, существует ли уже такой пользователь
-    cursor.execute("SELECT id FROM user WHERE id = ?", (user_id,))
-    result = cursor.fetchone()
-
-    if result:
-        # Если пользователь найден, обновляем его статус active
-        cursor.execute("UPDATE user SET active = ? WHERE id = ?", (True, user_id))
-    else:
-        # Если пользователь не найден, добавляем его
-        date_created = datetime.now().strftime('%Y-%m-%d')
-        cursor.execute("INSERT INTO user (id, active, date_created) VALUES (?, ?, ?)",
-                       (user_id, True, date_created))
+    date_created = datetime.now().strftime('%Y-%m-%d')
+    cursor.execute("INSERT OR REPLACE user (id, active, date_created) VALUES (?, ?, ?)",
+                   (user_id, True, date_created))
 
     conn.commit()
     conn.close()
@@ -226,7 +216,7 @@ def set_timer(user_id, question_id):
     current_datetime = datetime.now() + timedelta(minutes=2)
     timedate = current_datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
-    cursor.execute("INSERT INTO user_notify (user_id, question_id, timedate, active) VALUES (?, ?, ?, ?)",
+    cursor.execute("INSERT OR REPLACE user_notify (user_id, question_id, timedate, active) VALUES (?, ?, ?, ?)",
                    (user_id, question_id, timedate, 1))
     conn.commit()
     conn.close()
@@ -249,13 +239,6 @@ def skip_timer(user_id, question_id):
     conn.commit()
     conn.close()
 
-def update_user_stat(user_id, question_id, is_correct):
-    conn = sqlite3.connect('sqlite.db')
-    cursor = conn.cursor()
-    cursor.execute("INSERT OR REPLACE INTO user_stat (user_id, question_id, correct, timestamp) VALUES (?, ?, ?, ?)",
-                   (user_id, question_id, is_correct, datetime.now()))
-    conn.commit()
-    conn.close()
 
 def get_unresolved_questions(user_id):
     conn = sqlite3.connect('sqlite.db')
@@ -287,7 +270,7 @@ def get_active_question(user_id):
     conn.close()
     return result
 
-def insert_user_stat(user_id, question_id, correct):
+def update_user_stat(user_id, question_id, correct):
     conn = sqlite3.connect('sqlite.db')
     cursor = conn.cursor()
     cursor.execute(
@@ -296,10 +279,21 @@ def insert_user_stat(user_id, question_id, correct):
     conn.commit()
     conn.close()
 
+
+def clear_user_stat(user_id):
+    conn = sqlite3.connect('sqlite.db')
+    cursor = conn.cursor()
+    cursor.execute(
+        "DELETE FROM user_stat WHERE user_id = ?",
+        (user_id,))
+    conn.commit()
+    conn.close()
+
+
 def skip_question(user_id):
     conn = sqlite3.connect('sqlite.db')
     cursor = conn.cursor()
     cursor.execute("UPDATE user_notify SET active = 0 WHERE user_id = ?",
-                   (user_id))
+                   (user_id,))
     conn.commit()
     conn.close()
