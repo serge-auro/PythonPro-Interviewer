@@ -80,20 +80,8 @@ def get_report(user_id):
 
 # Получение вопроса
 def get_question(user_id):
-    conn = sqlite3.connect('sqlite.db')  # Подключение к базе данных
-    question = {"id": '', "name": ''}
     try:
-        cursor = conn.cursor()  # Создание объекта курсора для выполнения SQL-запросов
-
-        query = '''
-        SELECT q.id, q.name 
-        FROM question q
-        LEFT JOIN user_stat us ON q.id = us.question_id AND us.user_id = ? AND us.correct = 1
-        WHERE us.question_id IS NULL AND q.active = 1
-        '''  # SQL-запрос для выборки случайного вопроса, который пользователь еще не отвечал
-
-        cursor.execute(query, (user_id,))  # Выполнение SQL-запроса с передачей параметра user_id
-        questions = cursor.fetchall()  # Получение всех строк результата запроса
+        questions = get_unresolved_questions(user_id)
 
         if not questions:  # Если список вопросов пустой
             return "Все вопросы были уже правильно отвечены или нет доступных активных вопросов."
@@ -101,42 +89,23 @@ def get_question(user_id):
         question_id, question_text = random.choice(questions)  # Выбор случайного вопроса из списка
         question = {"id": question_id, "name": question_text}
 
-        # Запись вопроса в таблицу user_notify
-        # insert_query = '''
-        # INSERT OR REPLACE INTO user_notify (user_id, question_id, active) VALUES (?, ?, 1)
-        # '''
-        cursor.execute(insert_query, (user_id, question_id))
-        conn.commit()
-
         set_timer(user_id, question_id)
 
-        return question  # Возвращает текст случайного вопроса
-
-    except sqlite3.Error as e:  # Обработка исключения SQLite
+    except sqlite3.Error:
         return "Произошла ошибка при работе с базой данных. Пожалуйста, попробуйте позже."
 
-    finally:
-        conn.close()  # Закрытие соединения с базой данных в любом случае, даже если возникло исключение
+    return question
 
 # Получение ответа (ChatGPT)
 def process_answer(user_id, data, type: TYPE):
-    conn = sqlite3.connect('sqlite.db')
-    cursor = conn.cursor()
-    question_id = 0
-    question_text = ""
+    if not isinstance(user_id, int) or user_id <= 0:
+        return "Ошибка", "Некорректный идентификатор пользователя."
 
-    query = '''
-        SELECT qq.id, qq.name
-          FROM user_notify as un, question as qq
-         WHERE un.question_id = qq.id
-           AND qq.active = 1
-           AND un.active = 1
-           AND un.user_id = ? LIMIT 1
-    '''
+    if type not in ["audio", "empty", "text"]:
+        return "Ошибка", "Некорректный тип ответа."
 
     try:
-        cursor.execute(query, (user_id,))
-        result = cursor.fetchone()
+        result = get_active_question(user_id)
         if result:
             question_id, question_text = result
         else:
@@ -146,7 +115,7 @@ def process_answer(user_id, data, type: TYPE):
             try:
                 user_answer = audio_to_text(data)
             except Exception as e:
-                return "Ошибка", "Ошибка при распознавании аудиофайла."
+                return "Ошибка", f"Ошибка при распознавании аудиофайла: {str(e)}"
         elif type == "empty":
             return "Ошибка", "Пустой ответ."
         else:
@@ -154,22 +123,20 @@ def process_answer(user_id, data, type: TYPE):
 
         user_response = ask_chatgpt((question_text, user_answer))
 
-        # Сохранение ответа в БД
-        cursor.execute(
-            "INSERT OR REPLACE INTO user_stat (user_id, question_id, correct, timestamp) VALUES (?, ?, ?, ?)",
-            (user_id, question_id, user_response['result'] == 'correct', datetime.now()))
+        if user_response['result'] == "Верно":
+            correct = True
+        elif user_response['result'] == "Неверно":
+            correct = False
+        else:
+            return "Ошибка", "Некорректный формат ответа от ChatGPT."
 
-        # Деактивация вопроса в user_notify
-        skip_timer(user_id, question_id)
-        # cursor.execute("UPDATE user_notify SET active = 0 WHERE user_id = ? AND question_id = ?",
-        #                (user_id, question_id))
-        #
-        # conn.commit()
+        insert_user_stat(user_id, question_id, correct)
+        deactivate_user_question(user_id, question_id)
 
     except sqlite3.Error as e:
-        return "Ошибка", "Ошибка при сохранении вашего ответа."
-    finally:
-        conn.close()
+        return "Ошибка", f"Ошибка при сохранении вашего ответа: {str(e)}"
+    except Exception as e:
+        return "Ошибка", f"Неизвестная ошибка: {str(e)}"
 
     return user_response['result'], user_response['comment']
 
@@ -261,6 +228,7 @@ def set_timer(user_id, question_id):
 
     cursor.execute("INSERT INTO user_notify (user_id, question_id, timedate, active) VALUES (?, ?, ?, ?)",
                    (user_id, question_id, timedate, 1))
+    conn.commit()
     conn.close()
 
 # Удаление уведомлений
@@ -278,6 +246,7 @@ def skip_timer(user_id, question_id):
         '''
 
     cursor.execute(query, (user_id, question_id))
+    conn.commit()
     conn.close()
 
 def update_user_stat(user_id, question_id, is_correct):
@@ -285,5 +254,52 @@ def update_user_stat(user_id, question_id, is_correct):
     cursor = conn.cursor()
     cursor.execute("INSERT OR REPLACE INTO user_stat (user_id, question_id, correct, timestamp) VALUES (?, ?, ?, ?)",
                    (user_id, question_id, is_correct, datetime.now()))
+    conn.commit()
+    conn.close()
+
+def get_unresolved_questions(user_id):
+    conn = sqlite3.connect('sqlite.db')
+    cursor = conn.cursor()
+    query = '''
+        SELECT q.id, q.name 
+        FROM question q
+        LEFT JOIN user_stat us ON q.id = us.question_id AND us.user_id = ? AND us.correct = 1
+        WHERE us.question_id IS NULL AND q.active = 1
+    '''
+    cursor.execute(query, (user_id,))
+    questions = cursor.fetchall()
+    conn.close()
+    return questions
+
+def get_active_question(user_id):
+    conn = sqlite3.connect('sqlite.db')
+    cursor = conn.cursor()
+    query = '''
+        SELECT qq.id, qq.name
+        FROM user_notify as un, question as qq
+        WHERE un.question_id = qq.id
+          AND qq.active = 1
+          AND un.active = 1
+          AND un.user_id = ? LIMIT 1
+    '''
+    cursor.execute(query, (user_id,))
+    result = cursor.fetchone()
+    conn.close()
+    return result
+
+def insert_user_stat(user_id, question_id, correct):
+    conn = sqlite3.connect('sqlite.db')
+    cursor = conn.cursor()
+    cursor.execute(
+        "INSERT OR REPLACE INTO user_stat (user_id, question_id, correct, timestamp) VALUES (?, ?, ?, ?)",
+        (user_id, question_id, correct, datetime.now()))
+    conn.commit()
+    conn.close()
+
+def deactivate_user_question(user_id, question_id):
+    conn = sqlite3.connect('sqlite.db')
+    cursor = conn.cursor()
+    cursor.execute("UPDATE user_notify SET active = 0 WHERE user_id = ? AND question_id = ?",
+                   (user_id, question_id))
     conn.commit()
     conn.close()
