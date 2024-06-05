@@ -44,7 +44,7 @@ def handle_start(message):
 # Функция для отображения основного меню
 def show_menu(user_id):
     markup = types.ReplyKeyboardMarkup(row_width=2, resize_keyboard=True)
-    button_start_interview = types.KeyboardButton("🚀 Начать интервью")
+    button_start_interview = types.KeyboardButton("🚀 Получить вопрос")
     button_request_report = types.KeyboardButton("📊 Запросить отчет")
     button_reset_result = types.KeyboardButton("🔄 Обнулить результат")
     button_description = types.KeyboardButton("ℹ️ Описание бота")
@@ -60,9 +60,14 @@ def start_interview(user_id):
     markup.add(button_end_interview)
 
     question = backend_get_question(user_id)
+    question_id = question['id']
+
     if isinstance(question, dict) and "name" in question and "id" in question:
         user_states[user_id] = ("waiting_for_answer", question)
         bot.send_message(user_id, question["name"], reply_markup=markup)
+        # Удаление вопроса через 2 минуты
+        threading.Thread(target=go_to_next_question_after_timer, args=(user_id, question_id)).start()
+
     else:
         bot.send_message(user_id, "Похоже, проблема со связью... Давайте попробуем снова.")
 
@@ -73,7 +78,7 @@ def go_to_next_question_after_timer(user_id, question_id):
         bot.send_message(user_id, "Время вышло.")
         user_states[user_id] = ("menu", None)
         # Запись в user_stat, что ответ неверный
-        update_user_stat(user_id, question_id, is_correct=0)
+        update_user_stat(user_id, question_id, 0)
         start_interview(user_id)
 
 # Функция для обработки ответов
@@ -95,8 +100,9 @@ def handle_answer(message):
                 file_id = message.voice.file_id
                 user_response = file_id
                 response_type = "audio"
-                bot.send_message(user_id, "Думаю...")
+                # bot.send_message(user_id, "Думаю...")
             except Exception as e:
+                logging.info(f"handle_answer 1: {e} ")
                 bot.send_message(user_id, "Не могу понять ваш ответ. Пожалуйста, попробуйте снова.")
                 return
         else:
@@ -113,6 +119,7 @@ def handle_answer(message):
             # if result.lower() == "верно":  # Проверяем, что результат соответствует "Верно"
             #     update_user_stat(user_id, question['id'], 1)
         except Exception as e:
+            logging.info(f"handle_answer 2: {e} ")
             bot.send_message(user_id, "Мисскоммуникация... Пожалуйста, попробуйте снова.")
 
         show_menu(user_id)
@@ -134,7 +141,7 @@ def clear_user_stat(user_id):
 # Словарь для обработки текстовых сообщений
 commands = {
     "🚀 Старт": handle_start,
-    "🚀 Начать интервью": lambda message: start_interview(message.from_user.id),
+    "🚀 Получить вопрос": lambda message: start_interview(message.from_user.id),
     "📊 Запросить отчет": lambda message: bot.send_message(message.from_user.id, backend_get_report(message.from_user.id)),
     "🔄 Обнулить результат": lambda message: (
         clear_user_stat(message.from_user.id),

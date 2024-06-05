@@ -9,11 +9,13 @@ from openai import OpenAI
 import random
 import numpy as np
 import ffmpeg
+import logging
 
 TYPE = ("text", "audio", "empty")
 
 # Загрузка модели Whisper вне функций для улучшения производительности
 model = whisper.load_model('small')  # Или 'base' 'small' 'medium' 'large'
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 
 # Инициализация пользователя
@@ -82,7 +84,7 @@ def get_question(user_id):
         total_weights = sum(rate for _, _, rate in questions)
         question_id, question_text, _ = random.choices(questions, weights=[rate for _, _, rate in questions], k=1)[0]
         question = {"id": question_id, "name": question_text}
-
+        logging.info(f"{user_id} - {question_id}: {question_text}")
         set_timer(user_id, question_id)
 
     except sqlite3.Error as e:
@@ -117,6 +119,7 @@ def process_answer(user_id, data, type: TYPE):
         else:
             user_answer = data
 
+        logging.info(f"process_answer->gpt : {user_answer} ")
         user_response = ask_chatgpt((question_text, user_answer))
 
         if user_response['result'] == "Верно":
@@ -177,8 +180,10 @@ def download_audio_file(file_id, bot_token=BOT_TOKEN):
     download_url = f"https://api.telegram.org/file/bot{bot_token}/{file_path}"
     audio_response = requests.get(download_url)
     if audio_response.status_code != 200:
+        logging.info(f"download_audio_file : {audio_response.text} ")
         return None
     audio_data = io.BytesIO(audio_response.content)
+    logging.info(f"download_audio_file : {audio_response} ")
     return audio_data
 
 
@@ -193,6 +198,7 @@ def audio_to_numpy(audio_data):
             .run(input=audio_data.read(), capture_stdout=True, capture_stderr=True)
         )
     except Exception as e:
+        logging.info(f"audio_to_numpy : {e} ")
         return None
     audio_np = np.frombuffer(audio_np, np.int16).astype(np.float32)
     audio_np = audio_np / 32768.0  # Нормализация
@@ -211,7 +217,9 @@ def audio_to_text(file_id):
     try:
         result = model.transcribe(audio_np, language='ru')
     except Exception as e:
+        logging.info(f"audio_to_text : {e} ")
         return None
+    logging.info(f"audio_to_text :  {result['text']} ")
     return result['text']
 
 
@@ -246,7 +254,7 @@ def skip_timer(user_id):
              WHERE user_id = ?
                AND active = 1
         '''
-
+    logging.info(f"skip_timer {user_id} ")
     cursor.execute(query, (user_id,))
     conn.commit()
     conn.close()
