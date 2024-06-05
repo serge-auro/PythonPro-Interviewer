@@ -38,7 +38,7 @@ def error_handler(func):
 def handle_start(message):
     user_id = message.from_user.id
     backend_init_user(user_id)
-    bot.send_message(user_id, "Привет! Я твой бот-интервьюер по Python")
+    bot.send_message(user_id, "Приветствую! Я ваш бот-интервьюер по Python")
     show_menu(user_id)
 
 # Функция для отображения основного меню
@@ -64,13 +64,13 @@ def start_interview(user_id):
         user_states[user_id] = ("waiting_for_answer", question)
         bot.send_message(user_id, question["name"], reply_markup=markup)
     else:
-        bot.send_message(user_id, "Ошибка при получении вопроса. Пожалуйста, попробуйте снова.")
+        bot.send_message(user_id, "Похоже, проблема со связью... Давайте попробуем снова.")
 
 @error_handler
 def go_to_next_question_after_timer(user_id, question_id):
     time.sleep(120)
     if user_states.get(user_id) and user_states[user_id][1]['id'] == question_id and user_states[user_id][0] == "waiting_for_answer":
-        bot.send_message(user_id, "Прошло 2 минуты. Перейдем к следующему вопросу.")
+        bot.send_message(user_id, "Время вышло.")
         user_states[user_id] = ("menu", None)
         # Запись в user_stat, что ответ неверный
         update_user_stat(user_id, question_id, is_correct=0)
@@ -95,15 +95,15 @@ def handle_answer(message):
                 file_id = message.voice.file_id
                 user_response = file_id
                 response_type = "audio"
-                bot.send_message(user_id, "Распознаю аудио, ожидайте, пожалуйста...")
+                bot.send_message(user_id, "Думаю...")
             except Exception as e:
-                bot.send_message(user_id, "Произошла ошибка при загрузке аудиофайла. Пожалуйста, попробуйте снова.")
+                bot.send_message(user_id, "Не могу понять ваш ответ. Пожалуйста, попробуйте снова.")
                 return
         else:
-            bot.send_message(user_id, "Пожалуйста, отправьте текстовое сообщение или аудио.")
+            bot.send_message(user_id, "Отправьте текстовое сообщение или запишите ответ.")
             return
 
-        bot.send_message(user_id, "Ваш ответ принят. Пожалуйста, ожидайте проверку...")
+        bot.send_message(user_id, "Вас понял, сейчас подумаю...")
         try:
             result, comment = backend_process_answer(user_id, user_response, response_type)  # Вызываем метод бэкенда для обработки ответа
             bot.send_message(user_id, result)
@@ -113,12 +113,12 @@ def handle_answer(message):
             # if result.lower() == "верно":  # Проверяем, что результат соответствует "Верно"
             #     update_user_stat(user_id, question['id'], 1)
         except Exception as e:
-            bot.send_message(user_id, "Произошла ошибка при обработке вашего ответа. Пожалуйста, попробуйте снова.")
+            bot.send_message(user_id, "Мисскоммуникация... Пожалуйста, попробуйте снова.")
 
         show_menu(user_id)
         user_states[user_id] = ("menu", None)
     else:
-        bot.send_message(user_id, "Пожалуйста, выберите действие из меню.")
+        bot.send_message(user_id, "Выбери действие из меню.")
 
 # Функция для пропуска вопроса
 @error_handler
@@ -140,7 +140,7 @@ commands = {
         clear_user_stat(message.from_user.id),
         bot.send_message(message.from_user.id, "Ваш результат был обнулен.")
     ),
-    "ℹ️ Описание бота": lambda message: bot.send_message(message.from_user.id, "Этот бот предназначен для тренировки навыков интервью по Python."),
+    "ℹ️ Описание бота": lambda message: bot.send_message(message.from_user.id, "Я - ваш бот, предназначеный для тренировки навыков интервью по Python."),
     "⛔️ Пропустить вопрос": lambda message: skip_question(message.from_user.id)
 }
 
@@ -166,7 +166,7 @@ def handle_text_and_voice(message):
     elif user_states.get(user_id) and user_states[user_id][0] == "waiting_for_answer":
         handle_answer(message)
     else:
-        bot.send_message(user_id, "Добро пожаловать. Пожалуйста, выберите действие из меню.")
+        bot.send_message(user_id, "Пожалуйста, выберите действие из меню.")
 
 # Основной цикл для опроса и обработки сообщений
 while True:
