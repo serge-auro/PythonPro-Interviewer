@@ -1,3 +1,5 @@
+import json
+import os
 import sqlite3
 from datetime import datetime
 from datetime import timedelta
@@ -111,7 +113,7 @@ def process_answer(user_id, data, type: TYPE):
 
         if type == "audio":
             try:
-                user_answer = audio_to_text(data)
+                user_answer = audio_to_text(data, user_id)
             except Exception as e:
                 return "Ошибка", f"Ошибка при распознавании аудиофайла: {str(e)}"
         elif type == "empty":
@@ -170,57 +172,104 @@ def ask_chatgpt(question_pack: tuple):
     return response
 
 
-# Функция для скачивания голосового сообщения
 def download_audio_file(file_id, bot_token=BOT_TOKEN):
     file_url = f"https://api.telegram.org/bot{bot_token}/getFile?file_id={file_id}"
     response = requests.get(file_url)
     if response.status_code != 200:
+        logging.error(f"Failed to get file info: {response.text}")
         return None
-    file_path = response.json()['result']['file_path']
+
+    file_path = response.json().get('result', {}).get('file_path')
+    if not file_path:
+        logging.error(f"File path not found in response: {response.text}")
+        return None
+
     download_url = f"https://api.telegram.org/file/bot{bot_token}/{file_path}"
     audio_response = requests.get(download_url)
     if audio_response.status_code != 200:
-        logging.info(f"download_audio_file : {audio_response.text} ")
+        logging.error(f"Failed to download file: {audio_response.text}")
         return None
-    audio_data = io.BytesIO(audio_response.content)
-    logging.info(f"download_audio_file : {audio_response} ")
-    return audio_data
+
+    voice_file = f"voice_{file_id}.ogg"
+    with open(voice_file, 'wb') as f:
+        f.write(audio_response.content)
+
+    logging.info(f"File downloaded successfully and saved as {voice_file}")
+    return voice_file
+
+# Функция для скачивания голосового сообщения
+# def download_audio_file(file_id, bot_token=BOT_TOKEN):
+#     file_url = f"https://api.telegram.org/bot{bot_token}/getFile?file_id={file_id}"
+#     response = requests.get(file_url)
+#     if response.status_code != 200:
+#         return None
+#     file_path = response.json()['result']['file_path']
+#     download_url = f"https://api.telegram.org/file/bot{bot_token}/{file_path}"
+#     audio_response = requests.get(download_url)
+#     if audio_response.status_code != 200:
+#         logging.info(f"download_audio_file : {audio_response.text} ")
+#         return None
+#     audio_data = io.BytesIO(audio_response.content)
+#     logging.info(f"download_audio_file : {audio_response} ")
+#     return audio_data
 
 
 # Функция для преобразования аудио в массив NumPy
-def audio_to_numpy(audio_data):
-    try:
-        # Использование ffmpeg для декодирования байтового потока в массив NumPy
-        audio_np, _ = (
-            ffmpeg
-            .input('pipe:0', format='ogg')
-            .output('pipe:1', format='wav', acodec='pcm_s16le', ar='16000')
-            .run(input=audio_data.read(), capture_stdout=True, capture_stderr=True)
-        )
-    except Exception as e:
-        logging.info(f"audio_to_numpy : {e} ")
-        return None
-    audio_np = np.frombuffer(audio_np, np.int16).astype(np.float32)
-    audio_np = audio_np / 32768.0  # Нормализация
-    audio_np = audio_np.flatten()
-    return audio_np
+# def audio_to_numpy(audio_data):
+#     try:
+#         # Использование ffmpeg для декодирования байтового потока в массив NumPy
+#         audio_np, _ = (
+#             ffmpeg
+#             .input('pipe:0', format='ogg')
+#             .output('pipe:1', format='wav', acodec='pcm_s16le', ar='16000')
+#             .run(input=audio_data.read(), capture_stdout=True, capture_stderr=True)
+#         )
+#     except Exception as e:
+#         logging.info(f"audio_to_numpy : {e} ")
+#         return None
+#     audio_np = np.frombuffer(audio_np, np.int16).astype(np.float32)
+#     audio_np = audio_np / 32768.0  # Нормализация
+#     audio_np = audio_np.flatten()
+#     return audio_np
 
 
 # Функция для преобразования аудио в текст
-def audio_to_text(file_id):
-    audio_data = download_audio_file(file_id)
-    if audio_data is None:
-        return None
-    audio_np = audio_to_numpy(audio_data)
-    if audio_np is None:
-        return None
+def audio_to_text(file_id, user_id):
+    voice_file = download_audio_file(file_id)
+
+    # Преобразование аудио в формат, поддерживаемый API
+    wav_file = f"voice_{user_id}.wav"
+    ffmpeg.input(voice_file).output(wav_file).run(overwrite_output=True)
+
+    client = OpenAI(api_key=OPENAI_API_KEY, base_url="https://api.proxyapi.ru/openai/v1", timeout=120)
+
+    # Отправка файла на сервер OpenAI для транскрипции
     try:
-        result = model.transcribe(audio_np, language='ru')
+        with open(wav_file, 'rb') as audio_file:
+            response = client.audio.transcriptions.create(
+                model="whisper-1",
+                file=audio_file
+            )
+
+        if response:
+            response_data = response.json()
+            logging.info(f"Response data: {response_data}")  # Печать полного ответа для отладки
+
+            # Убедимся, что response_data является словарем, а не строкой
+            if isinstance(response_data, str):
+                response_data = json.loads(response_data)
+
+            transposed_text = response_data['text']
+        else:
+            logging.error(f"Ошибка транскрипции: {response}")
     except Exception as e:
-        logging.info(f"audio_to_text : {e} ")
-        return None
-    logging.info(f"audio_to_text :  {result['text']} ")
-    return result['text']
+        logging.error(f"Произошла ошибка при обработке аудио: {e}")
+
+    finally:
+        os.remove(voice_file)
+        os.remove(wav_file)
+
+    return transposed_text
 
 
 # Отслеживание уведомлений
