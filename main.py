@@ -5,6 +5,7 @@ import logging
 from datetime import datetime, timedelta
 import sqlite3
 from telebot import types
+import threading
 from backend import (init_user as backend_init_user, get_report as backend_get_report, skip_timer as backend_skip_timer,
                      get_question as backend_get_question, process_answer as backend_process_answer, update_user_stat,
                      clear_user_stat as be_clear_user_stat)
@@ -64,6 +65,16 @@ def start_interview(user_id):
         bot.send_message(user_id, question["name"], reply_markup=markup)
     else:
         bot.send_message(user_id, "Ошибка при получении вопроса. Пожалуйста, попробуйте снова.")
+
+@error_handler
+def go_to_next_question_after_timer(user_id, question_id):
+    time.sleep(120)
+    if user_states.get(user_id) and user_states[user_id][1]['id'] == question_id and user_states[user_id][0] == "waiting_for_answer":
+        bot.send_message(user_id, "Прошло 2 минуты. Перейдем к следующему вопросу.")
+        user_states[user_id] = ("menu", None)
+        # Запись в user_stat, что ответ неверный
+        update_user_stat(user_id, question_id, is_correct=0)
+        start_interview(user_id)
 
 # Функция для обработки ответов
 @error_handler
