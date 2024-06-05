@@ -4,16 +4,21 @@ from datetime import timedelta
 import requests
 import whisper
 import io
-from config import BOT_TOKEN, OPENAI_API_KEY, SYSTEM_PROMPT
+from config import BOT_TOKEN, OPENAI_API_KEY, SYSTEM_PROMPT, OPENAI_WHISPER_API_KEY
 from openai import OpenAI
 import random
 import numpy as np
 import ffmpeg
+import subprocess
+# from pydub import AudioSegment
 
 TYPE = ("text", "audio", "empty")
 
+client = OpenAI(api_key=OPENAI_WHISPER_API_KEY,
+                base_url="https://api.proxyapi.ru/openai/v1")
+
 # Загрузка модели Whisper вне функций для улучшения производительности
-model = whisper.load_model('small')  # Или 'base' 'small' 'medium' 'large'
+# model = whisper.load_model('small')  # Или 'base' 'small' 'medium' 'large'
 
 
 # Инициализация пользователя
@@ -117,6 +122,7 @@ def process_answer(user_id, data, type: TYPE):
         else:
             user_answer = data
 
+        print(user_answer)
         user_response = ask_chatgpt((question_text, user_answer))
 
         if user_response['result'] == "Верно":
@@ -168,51 +174,76 @@ def ask_chatgpt(question_pack: tuple):
 
 
 # Функция для скачивания голосового сообщения
-def download_audio_file(file_id, bot_token=BOT_TOKEN):
+def download_audio_file(file_id, bot_token):
     file_url = f"https://api.telegram.org/bot{bot_token}/getFile?file_id={file_id}"
     response = requests.get(file_url)
     if response.status_code != 200:
+        print(f"Failed to get file. Status code: {response.status_code}")
         return None
-    file_path = response.json()['result']['file_path']
+    file_path = response.json().get('result', {}).get('file_path')
+    if not file_path:
+        print("Failed to get file path.")
+        return None
     download_url = f"https://api.telegram.org/file/bot{bot_token}/{file_path}"
     audio_response = requests.get(download_url)
     if audio_response.status_code != 200:
+        print(f"Failed to download file. Status code: {audio_response.status_code}")
         return None
     audio_data = io.BytesIO(audio_response.content)
     return audio_data
 
 
-# Функция для преобразования аудио в массив NumPy
-def audio_to_numpy(audio_data):
+# Функция для конвертации аудио из формата .ogg в .wav
+def convert_audio_to_wav(ogg_data):
+    wav_data = io.BytesIO()  # Буфер для хранения выходных данных
     try:
-        # Использование ffmpeg для декодирования байтового потока в массив NumPy
-        audio_np, _ = (
+        process = (
             ffmpeg
             .input('pipe:0', format='ogg')
             .output('pipe:1', format='wav', acodec='pcm_s16le', ar='16000')
-            .run(input=audio_data.read(), capture_stdout=True, capture_stderr=True)
+            .run_async(pipe_stdin=True, pipe_stdout=True, pipe_stderr=True)
         )
-    except Exception as e:
+        output, error = process.communicate(input=ogg_data.read())
+        if process.returncode != 0:
+            print(f"FFmpeg error: {error.decode()}")
+            return None
+        wav_data.write(output)
+        wav_data.seek(0)
+        return wav_data
+    except ffmpeg.Error as e:
+        print(f"FFmpeg error: {e.stderr.decode()}")
         return None
-    audio_np = np.frombuffer(audio_np, np.int16).astype(np.float32)
-    audio_np = audio_np / 32768.0  # Нормализация
-    audio_np = audio_np.flatten()
-    return audio_np
 
 
-# Функция для преобразования аудио в текст
-def audio_to_text(file_id):
-    audio_data = download_audio_file(file_id)
+# Функция для преобразования аудио в текст с использованием OpenAI Whisper API
+def audio_to_text(file_id, bot_token=BOT_TOKEN):
+    audio_data = download_audio_file(file_id, bot_token)
     if audio_data is None:
+        print("Failed to download audio file.")
         return None
-    audio_np = audio_to_numpy(audio_data)
-    if audio_np is None:
+    wav_data = convert_audio_to_wav(audio_data)
+    if wav_data is None:
+        print("Failed to convert audio to wav.")
         return None
-    try:
-        result = model.transcribe(audio_np, language='ru')
-    except Exception as e:
+    response = client.audio.transcriptions.create(
+        file=wav_data,
+        model="whisper-1"
+    )
+    print(type(response))
+    if hasattr(response, 'error'):
+        print(f"OpenAI Whisper error: {response.error}")
         return None
-    return result['text']
+    return response.get('text')  # Используйте get для безопасного доступа к тексту
+    # return response.text
+
+    # response = client.Audio.create_transcription(
+    #     audio=mp3_data,
+    #     model="whisper-1"
+    # )
+    # if response.get('error'):
+    #     print(f"OpenAI Whisper error: {response['error']}")
+    #     return None
+    # return response['text']
 
 
 # Отслеживание уведомлений
