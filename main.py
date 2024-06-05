@@ -78,9 +78,11 @@ def handle_answer(message):
             response_type = "text"
         elif message.content_type == 'voice':
             try:
-                file_info = bot.get_file(message.voice.file_id)
-                file = bot.download_file(file_info.file_path)
-                user_response = file  # Здесь вместо простого присвоения вы можете сохранить файл и передать путь к нему
+                # file_info = bot.get_file(message.voice.file_id)
+                # file = bot.download_file(file_info.file_path)
+                # user_response = file  # Здесь вместо простого присвоения вы можете сохранить файл и передать путь к нему
+                file_id = message.voice.file_id
+                user_response = file_id
                 response_type = "audio"
                 bot.send_message(user_id, "Распознаю аудио, ожидайте, пожалуйста...")
             except Exception as e:

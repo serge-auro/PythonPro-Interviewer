@@ -161,3 +161,4 @@ cython_debug/
 
 config.py
 sqlite.db
+mytestfunc.py
