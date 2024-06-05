@@ -53,14 +53,14 @@ def get_report(user_id):
     incorrect_answers = result[2]
 
     if total_questions == 0:
-        return ("Количество заданных вопросов: 0\n "
+        return ("Количество заданных вопросов: 0\n"
                 "Правильных ответов: 0%\n"
                 "Неправильных: 0%")
 
     correct_percentage = round((correct_answers / total_questions) * 100)
     incorrect_percentage = 100 - correct_percentage
 
-    report = (f"Количество заданных вопросов: {total_questions}\n "
+    report = (f"Количество заданных вопросов: {total_questions}\n"
               f"Правильных ответов: {correct_percentage}%\n"
               f"Неправильных: {incorrect_percentage}%")
 
