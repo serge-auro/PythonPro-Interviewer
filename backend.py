@@ -3,7 +3,7 @@ from datetime import datetime
 from datetime import timedelta
 import requests
 import io
-from config import BOT_TOKEN, OPENAI_API_KEY, SYSTEM_PROMPT, OPENAI_WHISPER_API_KEY
+from config import BOT_TOKEN, OPENAI_API_KEY, SYSTEM_PROMPT, OPENAI_WHISPER_API_KEY, WHISPER_PROMPT
 from openai import OpenAI
 import random
 import ffmpeg
@@ -251,7 +251,9 @@ def audio_to_text(file_id):
     with open(wav_file_path, 'rb') as wav_data:
         response = client.audio.transcriptions.create(
             file=wav_data,
-            model="whisper-1"
+            model="whisper-1",
+            prompt=WHISPER_PROMPT,
+            language="russian"
         )
 
     if hasattr(response, 'error'):
