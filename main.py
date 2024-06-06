@@ -79,7 +79,8 @@ def go_to_next_question_after_timer(user_id, question_id):
         user_states[user_id] = ("menu", None)
         # Запись в user_stat, что ответ неверный
         update_user_stat(user_id, question_id, 0)
-        start_interview(user_id)
+        show_menu(user_id)
+        user_states[user_id] = ("menu", None)
 
 # Функция для обработки ответов
 @error_handler
