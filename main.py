@@ -99,6 +99,7 @@ def handle_answer(message):
                 # file = bot.download_file(file_info.file_path)
                 # user_response = file  # Здесь вместо простого присвоения вы можете сохранить файл и передать путь к нему
                 file_id = message.voice.file_id
+                logging.info(f"Requesting file id: {file_id}")
                 user_response = file_id
                 response_type = "audio"
                 # bot.send_message(user_id, "Думаю...")
