@@ -8,6 +8,7 @@ from openai import OpenAI
 import random
 import ffmpeg
 import logging
+import os
 
 # import subprocess
 # from pydub import AudioSegment
@@ -113,8 +114,9 @@ def process_answer(user_id, data, type: TYPE):
 
         if type == "audio":
             try:
-                user_answer = audio_to_text(data, user_id)
+                user_answer = audio_to_text(data)
             except Exception as e:
+                os.remove(download_audio_file(data))
                 return "Ошибка", f"Ошибка при распознавании аудиофайла: {str(e)}"
         elif type == "empty":
             return "Ошибка", "Пустой ответ."
@@ -174,14 +176,18 @@ def ask_chatgpt(question_pack: tuple):
 # Функция для скачивания голосового сообщения
 def download_audio_file(file_id, bot_token=BOT_TOKEN):
     file_url = f"https://api.telegram.org/bot{bot_token}/getFile?file_id={file_id}"
+    logging.info(f"Requesting file info with URL: {file_url}")
     response = requests.get(file_url)
+    logging.info(f"Response from Telegram API: {response.json()}")
     if response.status_code != 200:
         logging.error(f"Failed to get file info: {response.status_code}")
         return None
+
     file_path = response.json().get('result', {}).get('file_path')
     if not file_path:
         logging.error("Failed to get file path.")
         return None
+
     download_url = f"https://api.telegram.org/file/bot{bot_token}/{file_path}"
     audio_response = requests.get(download_url)
     if audio_response.status_code != 200:
@@ -213,16 +219,16 @@ def download_audio_file(file_id, bot_token=BOT_TOKEN):
 
 
 # Функция для конвертации аудио из формата .ogg в .wav
-def convert_audio_to_wav(ogg_data):
+def convert_audio_to_wav(ogg_file_path):
     wav_data = io.BytesIO()  # Буфер для хранения выходных данных
     try:
         process = (
             ffmpeg
-            .input('pipe:0', format='ogg')
+            .input(ogg_file_path)  # ('pipe:0', format='ogg')
             .output('pipe:1', format='wav', acodec='pcm_s16le', ar='16000')
             .run_async(pipe_stdin=True, pipe_stdout=True, pipe_stderr=True)
         )
-        output, error = process.communicate(input=ogg_data.read())
+        output, error = process.communicate()
         if process.returncode != 0:
             logging.error(f"FFmpeg error: {error.decode()}")
             return None
@@ -235,14 +241,15 @@ def convert_audio_to_wav(ogg_data):
 
 
 # Функция для преобразования аудио в текст с использованием OpenAI Whisper API
-def audio_to_text(file_id, bot_token=BOT_TOKEN):
-    audio_data = download_audio_file(file_id, bot_token)
-    if audio_data is None:
+def audio_to_text(file_id):
+    ogg_file_path = download_audio_file(file_id)
+    if ogg_file_path is None:
         logging.error("Failed to download audio file.")
         return None
-    wav_data = convert_audio_to_wav(audio_data)
+    wav_data = convert_audio_to_wav(ogg_file_path)
     if wav_data is None:
         print("Failed to convert audio to wav.")
+        os.remove(ogg_file_path)  # Удаляем ogg файл, так как он больше не нужен
         return None
     response = client.audio.transcriptions.create(
         file=wav_data,
@@ -250,10 +257,15 @@ def audio_to_text(file_id, bot_token=BOT_TOKEN):
     )
     print(type(response))
     if hasattr(response, 'error'):
-        print(f"OpenAI Whisper error: {response.error}")
+        logging.error(f"OpenAI Whisper error: {response.error}")
+        os.remove(ogg_file_path)  # Удаляем ogg файл, так как он больше не нужен
         return None
-    return response.get('text')  # Используйте get для безопасного доступа к тексту
-    # return response.text
+
+        # Удаляем ogg файл, так как он больше не нужен
+    os.remove(ogg_file_path)
+
+    # return response.get('text')
+    return response.text
 
     # response = client.Audio.create_transcription(
     #     audio=mp3_data,
