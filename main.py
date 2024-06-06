@@ -2,8 +2,6 @@ import telebot
 from config import BOT_TOKEN
 import time
 import logging
-from datetime import datetime, timedelta
-import sqlite3
 from telebot import types
 import threading
 from backend import (init_user as backend_init_user, get_report as backend_get_report, skip_timer as backend_skip_timer,

@@ -15,8 +15,8 @@ import os
 
 TYPE = ("text", "audio", "empty")
 
-client = OpenAI(api_key=OPENAI_WHISPER_API_KEY,
-                base_url="https://api.proxyapi.ru/openai/v1")
+client = OpenAI(api_key=OPENAI_WHISPER_API_KEY)
+#                base_url="https://api.proxyapi.ru/openai/v1") # only for russian server
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
@@ -155,7 +155,7 @@ def ask_chatgpt(question_pack: tuple):
     ask_content = f"Question: {user_question}\nAnswer: {user_answer}"
 
     completion = client.chat.completions.create(
-        model="gpt-3.5-turbo",
+        model="gpt-4o",
         messages=[
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": ask_content}
@@ -219,22 +219,18 @@ def download_audio_file(file_id, bot_token=BOT_TOKEN):
 
 
 # Функция для конвертации аудио из формата .ogg в .wav
+# Функция для конвертации аудио из формата .ogg в .wav
 def convert_audio_to_wav(ogg_file_path):
-    wav_data = io.BytesIO()  # Буфер для хранения выходных данных
+    wav_file_path = ogg_file_path.replace('.ogg', '.wav')
     try:
         process = (
             ffmpeg
-            .input(ogg_file_path)  # ('pipe:0', format='ogg')
-            .output('pipe:1', format='wav', acodec='pcm_s16le', ar='16000')
-            .run_async(pipe_stdin=True, pipe_stdout=True, pipe_stderr=True)
+            .input(ogg_file_path)
+            .output(wav_file_path, format='wav', acodec='pcm_s16le', ar='16000')
+            .overwrite_output()
+            .run()
         )
-        output, error = process.communicate()
-        if process.returncode != 0:
-            logging.error(f"FFmpeg error: {error.decode()}")
-            return None
-        wav_data.write(output)
-        wav_data.seek(0)
-        return wav_data
+        return wav_file_path
     except ffmpeg.Error as e:
         logging.error(f"FFmpeg error: {e.stderr.decode()}")
         return None
@@ -246,35 +242,30 @@ def audio_to_text(file_id):
     if ogg_file_path is None:
         logging.error("Failed to download audio file.")
         return None
-    wav_data = convert_audio_to_wav(ogg_file_path)
-    if wav_data is None:
+    wav_file_path = convert_audio_to_wav(ogg_file_path)
+    if wav_file_path is None:
         print("Failed to convert audio to wav.")
         os.remove(ogg_file_path)  # Удаляем ogg файл, так как он больше не нужен
         return None
-    response = client.audio.transcriptions.create(
-        file=wav_data,
-        model="whisper-1"
-    )
-    print(type(response))
+
+    with open(wav_file_path, 'rb') as wav_data:
+        response = client.audio.transcriptions.create(
+            file=wav_data,
+            model="whisper-1"
+        )
+
     if hasattr(response, 'error'):
         logging.error(f"OpenAI Whisper error: {response.error}")
         os.remove(ogg_file_path)  # Удаляем ogg файл, так как он больше не нужен
+        os.remove(wav_file_path)  # Удаляем wav файл, так как он больше не нужен
         return None
 
-        # Удаляем ogg файл, так как он больше не нужен
+    # Удаляем ogg и wav файлы, так как они больше не нужны
     os.remove(ogg_file_path)
-
-    # return response.get('text')
+    os.remove(wav_file_path)
     return response.text
 
-    # response = client.Audio.create_transcription(
-    #     audio=mp3_data,
-    #     model="whisper-1"
-    # )
-    # if response.get('error'):
-    #     print(f"OpenAI Whisper error: {response['error']}")
-    #     return None
-    # return response['text']
+
 
 # Отслеживание уведомлений
 def get_notify(user_id):
