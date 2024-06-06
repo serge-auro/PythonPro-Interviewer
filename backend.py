@@ -3,8 +3,7 @@ from datetime import datetime
 from datetime import timedelta
 import requests
 import io
-import json
-from config import BOT_TOKEN, OPENAI_API_KEY, SYSTEM_PROMPT, OPENAI_WHISPER_API_KEY, WHISPER_PROMPT
+from config import BOT_TOKEN, OPENAI_API_KEY, SYSTEM_PROMPT, OPENAI_WHISPER_API_KEY
 from openai import OpenAI
 import random
 import ffmpeg
@@ -115,7 +114,7 @@ def process_answer(user_id, data, type: TYPE):
 
         if type == "audio":
             try:
-                user_answer = audio_to_text(data,user_id)
+                user_answer = audio_to_text(data)
             except Exception as e:
                 os.remove(download_audio_file(data))
                 return "Ошибка", f"Ошибка при распознавании аудиофайла: {str(e)}"
@@ -202,7 +201,24 @@ def download_audio_file(file_id, bot_token=BOT_TOKEN):
     logging.info(f"File downloaded successfully and saved as {voice_file}")
     return voice_file
 
+# Функция для скачивания голосового сообщения
+# def download_audio_file(file_id, bot_token=BOT_TOKEN):
+#     file_url = f"https://api.telegram.org/bot{bot_token}/getFile?file_id={file_id}"
+#     response = requests.get(file_url)
+#     if response.status_code != 200:
+#         return None
+#     file_path = response.json()['result']['file_path']
+#     download_url = f"https://api.telegram.org/file/bot{bot_token}/{file_path}"
+#     audio_response = requests.get(download_url)
+#     if audio_response.status_code != 200:
+#         logging.info(f"download_audio_file : {audio_response.text} ")
+#         return None
+#     audio_data = io.BytesIO(audio_response.content)
+#     logging.info(f"download_audio_file : {audio_response} ")
+#     return audio_data
 
+
+# Функция для конвертации аудио из формата .ogg в .wav
 # Функция для конвертации аудио из формата .ogg в .wav
 def convert_audio_to_wav(ogg_file_path):
     wav_file_path = ogg_file_path.replace('.ogg', '.wav')
@@ -221,44 +237,33 @@ def convert_audio_to_wav(ogg_file_path):
 
 
 # Функция для преобразования аудио в текст с использованием OpenAI Whisper API
-def audio_to_text(file_id, user_id):
-    voice_file = download_audio_file(file_id)
+def audio_to_text(file_id):
+    ogg_file_path = download_audio_file(file_id)
+    if ogg_file_path is None:
+        logging.error("Failed to download audio file.")
+        return None
+    wav_file_path = convert_audio_to_wav(ogg_file_path)
+    if wav_file_path is None:
+        print("Failed to convert audio to wav.")
+        os.remove(ogg_file_path)  # Удаляем ogg файл, так как он больше не нужен
+        return None
 
-    # Преобразование аудио в формат, поддерживаемый API
-    wav_file = f"voice_{user_id}.wav"
-    ffmpeg.input(voice_file).output(wav_file).run(overwrite_output=True)
+    with open(wav_file_path, 'rb') as wav_data:
+        response = client.audio.transcriptions.create(
+            file=wav_data,
+            model="whisper-1"
+        )
 
-    client = OpenAI(api_key=OPENAI_API_KEY, base_url="https://api.proxyapi.ru/openai/v1", timeout=120)
-    transposed_text = ''
-    # Отправка файла на сервер OpenAI для транскрипции
-    try:
-        with open(wav_file, 'rb') as audio_file:
-            response = client.audio.transcriptions.create(
-                model="whisper-1",
-                file=audio_file,
-                prompt=WHISPER_PROMPT,
-                language="russian"
-            )
+    if hasattr(response, 'error'):
+        logging.error(f"OpenAI Whisper error: {response.error}")
+        os.remove(ogg_file_path)  # Удаляем ogg файл, так как он больше не нужен
+        os.remove(wav_file_path)  # Удаляем wav файл, так как он больше не нужен
+        return None
 
-        if response:
-            response_data = response.json()
-            logging.info(f"Response data: {response_data}")  # Печать полного ответа для отладки
-
-            # Убедимся, что response_data является словарем, а не строкой
-            if isinstance(response_data, str):
-                response_data = json.loads(response_data)
-
-            transposed_text = response_data["text"]
-        else:
-            logging.error(f"Ошибка транскрипции: {response}")
-    except Exception as e:
-        logging.error(f"Произошла ошибка при обработке аудио: {e}")
-
-    finally:
-        os.remove(voice_file)
-        os.remove(wav_file)
-
-    return transposed_text
+    # Удаляем ogg и wav файлы, так как они больше не нужны
+    os.remove(ogg_file_path)
+    os.remove(wav_file_path)
+    return response.text
 
 
 
