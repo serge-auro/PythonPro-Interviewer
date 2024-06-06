@@ -5,11 +5,9 @@ from datetime import datetime
 from datetime import timedelta
 import requests
 import whisper
-import io
-from config import BOT_TOKEN, OPENAI_API_KEY, SYSTEM_PROMPT
+from config import BOT_TOKEN, OPENAI_API_KEY, SYSTEM_PROMPT, WHISPER_PROMPT
 from openai import OpenAI
 import random
-import numpy as np
 import ffmpeg
 import logging
 
@@ -171,7 +169,7 @@ def ask_chatgpt(question_pack: tuple):
 
     return response
 
-
+# Функция для скачивания аудиофайла из сообщения
 def download_audio_file(file_id, bot_token=BOT_TOKEN):
     file_url = f"https://api.telegram.org/bot{bot_token}/getFile?file_id={file_id}"
     response = requests.get(file_url)
@@ -197,42 +195,6 @@ def download_audio_file(file_id, bot_token=BOT_TOKEN):
     logging.info(f"File downloaded successfully and saved as {voice_file}")
     return voice_file
 
-# Функция для скачивания голосового сообщения
-# def download_audio_file(file_id, bot_token=BOT_TOKEN):
-#     file_url = f"https://api.telegram.org/bot{bot_token}/getFile?file_id={file_id}"
-#     response = requests.get(file_url)
-#     if response.status_code != 200:
-#         return None
-#     file_path = response.json()['result']['file_path']
-#     download_url = f"https://api.telegram.org/file/bot{bot_token}/{file_path}"
-#     audio_response = requests.get(download_url)
-#     if audio_response.status_code != 200:
-#         logging.info(f"download_audio_file : {audio_response.text} ")
-#         return None
-#     audio_data = io.BytesIO(audio_response.content)
-#     logging.info(f"download_audio_file : {audio_response} ")
-#     return audio_data
-
-
-# Функция для преобразования аудио в массив NumPy
-# def audio_to_numpy(audio_data):
-#     try:
-#         # Использование ffmpeg для декодирования байтового потока в массив NumPy
-#         audio_np, _ = (
-#             ffmpeg
-#             .input('pipe:0', format='ogg')
-#             .output('pipe:1', format='wav', acodec='pcm_s16le', ar='16000')
-#             .run(input=audio_data.read(), capture_stdout=True, capture_stderr=True)
-#         )
-#     except Exception as e:
-#         logging.info(f"audio_to_numpy : {e} ")
-#         return None
-#     audio_np = np.frombuffer(audio_np, np.int16).astype(np.float32)
-#     audio_np = audio_np / 32768.0  # Нормализация
-#     audio_np = audio_np.flatten()
-#     return audio_np
-
-
 # Функция для преобразования аудио в текст
 def audio_to_text(file_id, user_id):
     voice_file = download_audio_file(file_id)
@@ -248,7 +210,9 @@ def audio_to_text(file_id, user_id):
         with open(wav_file, 'rb') as audio_file:
             response = client.audio.transcriptions.create(
                 model="whisper-1",
-                file=audio_file
+                file=audio_file,
+                prompt=WHISPER_PROMPT,
+                language="russian"
             )
 
         if response:
