@@ -1,22 +1,22 @@
-import json
-import os
 import sqlite3
 from datetime import datetime
 from datetime import timedelta
 import requests
-import whisper
 import io
-from config import BOT_TOKEN, OPENAI_API_KEY, SYSTEM_PROMPT
+from config import BOT_TOKEN, OPENAI_API_KEY, SYSTEM_PROMPT, OPENAI_WHISPER_API_KEY
 from openai import OpenAI
 import random
-import numpy as np
 import ffmpeg
 import logging
 
+# import subprocess
+# from pydub import AudioSegment
+
 TYPE = ("text", "audio", "empty")
 
-# Загрузка модели Whisper вне функций для улучшения производительности
-model = whisper.load_model('small')  # Или 'base' 'small' 'medium' 'large'
+client = OpenAI(api_key=OPENAI_WHISPER_API_KEY,
+                base_url="https://api.proxyapi.ru/openai/v1")
+
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 
@@ -122,6 +122,7 @@ def process_answer(user_id, data, type: TYPE):
             user_answer = data
 
         logging.info(f"process_answer->gpt : {user_answer} ")
+
         user_response = ask_chatgpt((question_text, user_answer))
 
         if user_response['result'] == "Верно":
@@ -151,8 +152,6 @@ def ask_chatgpt(question_pack: tuple):
     user_question, user_answer = question_pack
     ask_content = f"Question: {user_question}\nAnswer: {user_answer}"
 
-    client = OpenAI(api_key=OPENAI_API_KEY, base_url="https://api.proxyapi.ru/openai/v1", timeout=30)
-
     completion = client.chat.completions.create(
         model="gpt-3.5-turbo",
         messages=[
@@ -172,18 +171,17 @@ def ask_chatgpt(question_pack: tuple):
     return response
 
 
+# Функция для скачивания голосового сообщения
 def download_audio_file(file_id, bot_token=BOT_TOKEN):
     file_url = f"https://api.telegram.org/bot{bot_token}/getFile?file_id={file_id}"
     response = requests.get(file_url)
     if response.status_code != 200:
-        logging.error(f"Failed to get file info: {response.text}")
+        logging.error(f"Failed to get file info: {response.status_code}")
         return None
-
     file_path = response.json().get('result', {}).get('file_path')
     if not file_path:
-        logging.error(f"File path not found in response: {response.text}")
+        logging.error("Failed to get file path.")
         return None
-
     download_url = f"https://api.telegram.org/file/bot{bot_token}/{file_path}"
     audio_response = requests.get(download_url)
     if audio_response.status_code != 200:
@@ -214,63 +212,57 @@ def download_audio_file(file_id, bot_token=BOT_TOKEN):
 #     return audio_data
 
 
-# Функция для преобразования аудио в массив NumPy
-# def audio_to_numpy(audio_data):
-#     try:
-#         # Использование ffmpeg для декодирования байтового потока в массив NumPy
-#         audio_np, _ = (
-#             ffmpeg
-#             .input('pipe:0', format='ogg')
-#             .output('pipe:1', format='wav', acodec='pcm_s16le', ar='16000')
-#             .run(input=audio_data.read(), capture_stdout=True, capture_stderr=True)
-#         )
-#     except Exception as e:
-#         logging.info(f"audio_to_numpy : {e} ")
-#         return None
-#     audio_np = np.frombuffer(audio_np, np.int16).astype(np.float32)
-#     audio_np = audio_np / 32768.0  # Нормализация
-#     audio_np = audio_np.flatten()
-#     return audio_np
-
-
-# Функция для преобразования аудио в текст
-def audio_to_text(file_id, user_id):
-    voice_file = download_audio_file(file_id)
-
-    # Преобразование аудио в формат, поддерживаемый API
-    wav_file = f"voice_{user_id}.wav"
-    ffmpeg.input(voice_file).output(wav_file).run(overwrite_output=True)
-
-    client = OpenAI(api_key=OPENAI_API_KEY, base_url="https://api.proxyapi.ru/openai/v1", timeout=120)
-
-    # Отправка файла на сервер OpenAI для транскрипции
+# Функция для конвертации аудио из формата .ogg в .wav
+def convert_audio_to_wav(ogg_data):
+    wav_data = io.BytesIO()  # Буфер для хранения выходных данных
     try:
-        with open(wav_file, 'rb') as audio_file:
-            response = client.audio.transcriptions.create(
-                model="whisper-1",
-                file=audio_file
-            )
+        process = (
+            ffmpeg
+            .input('pipe:0', format='ogg')
+            .output('pipe:1', format='wav', acodec='pcm_s16le', ar='16000')
+            .run_async(pipe_stdin=True, pipe_stdout=True, pipe_stderr=True)
+        )
+        output, error = process.communicate(input=ogg_data.read())
+        if process.returncode != 0:
+            logging.error(f"FFmpeg error: {error.decode()}")
+            return None
+        wav_data.write(output)
+        wav_data.seek(0)
+        return wav_data
+    except ffmpeg.Error as e:
+        logging.error(f"FFmpeg error: {e.stderr.decode()}")
+        return None
 
-        if response:
-            response_data = response.json()
-            logging.info(f"Response data: {response_data}")  # Печать полного ответа для отладки
 
-            # Убедимся, что response_data является словарем, а не строкой
-            if isinstance(response_data, str):
-                response_data = json.loads(response_data)
+# Функция для преобразования аудио в текст с использованием OpenAI Whisper API
+def audio_to_text(file_id, bot_token=BOT_TOKEN):
+    audio_data = download_audio_file(file_id, bot_token)
+    if audio_data is None:
+        logging.error("Failed to download audio file.")
+        return None
+    wav_data = convert_audio_to_wav(audio_data)
+    if wav_data is None:
+        print("Failed to convert audio to wav.")
+        return None
+    response = client.audio.transcriptions.create(
+        file=wav_data,
+        model="whisper-1"
+    )
+    print(type(response))
+    if hasattr(response, 'error'):
+        print(f"OpenAI Whisper error: {response.error}")
+        return None
+    return response.get('text')  # Используйте get для безопасного доступа к тексту
+    # return response.text
 
-            transposed_text = response_data['text']
-        else:
-            logging.error(f"Ошибка транскрипции: {response}")
-    except Exception as e:
-        logging.error(f"Произошла ошибка при обработке аудио: {e}")
-
-    finally:
-        os.remove(voice_file)
-        os.remove(wav_file)
-
-    return transposed_text
-
+    # response = client.Audio.create_transcription(
+    #     audio=mp3_data,
+    #     model="whisper-1"
+    # )
+    # if response.get('error'):
+    #     print(f"OpenAI Whisper error: {response['error']}")
+    #     return None
+    # return response['text']
 
 # Отслеживание уведомлений
 def get_notify(user_id):
