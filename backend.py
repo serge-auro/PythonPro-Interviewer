@@ -5,7 +5,7 @@ from datetime import datetime
 from datetime import timedelta
 import requests
 import whisper
-from config import BOT_TOKEN, OPENAI_API_KEY, SYSTEM_PROMPT, WHISPER_PROMPT
+from config import BOT_TOKEN, OPENAI_API_KEY, SYSTEM_PROMPT, OPENAI_WHISPER_API_KEY,WHISPER_PROMPT
 from openai import OpenAI
 import random
 import ffmpeg
