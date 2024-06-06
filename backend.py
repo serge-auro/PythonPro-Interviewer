@@ -16,7 +16,7 @@ import os
 
 TYPE = ("text", "audio", "empty")
 
-client = OpenAI(api_key=OPENAI_API_KEY)
+client = OpenAI(api_key=OPENAI_WHISPER_API_KEY)
 #                base_url="https://api.proxyapi.ru/openai/v1") # only for russian server
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -228,7 +228,7 @@ def audio_to_text(file_id, user_id):
     wav_file = f"voice_{user_id}.wav"
     ffmpeg.input(voice_file).output(wav_file).run(overwrite_output=True)
 
-    client = OpenAI(api_key=OPENAI_WHISPER_API_KEY, base_url="https://api.proxyapi.ru/openai/v1", timeout=100)
+    client = OpenAI(api_key=OPENAI_API_KEY, base_url="https://api.proxyapi.ru/openai/v1", timeout=120)
     transposed_text = ''
     # Отправка файла на сервер OpenAI для транскрипции
     try:
