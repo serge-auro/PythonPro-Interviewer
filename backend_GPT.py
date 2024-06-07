@@ -1,22 +1,17 @@
 import sqlite3
-from datetime import datetime
-from datetime import timedelta
+from datetime import datetime, timedelta
 import requests
 import io
-from config import BOT_TOKEN, OPENAI_API_KEY, SYSTEM_PROMPT, OPENAI_WHISPER_API_KEY, WHISPER_PROMPT
+from config import BOT_TOKEN, OPENAI_API_KEY, SYSTEM_PROMPT, OPENAI_WHISPER_API_KEY
 from openai import OpenAI
 import random
 import ffmpeg
 import logging
 import os
 
-# import subprocess
-# from pydub import AudioSegment
-
 TYPE = ("text", "audio", "empty")
 
-client = OpenAI(api_key=OPENAI_WHISPER_API_KEY)
-#                base_url="https://api.proxyapi.ru/openai/v1") # only for russian server
+client = OpenAI(api_key=OPENAI_WHISPER_API_KEY, base_url="https://api.proxyapi.ru/openai/v1")
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
@@ -26,8 +21,7 @@ def init_user(user_id):
     conn = sqlite3.connect('sqlite.db')
     cursor = conn.cursor()
 
-    cursor.execute("INSERT OR REPLACE INTO user (id, active) VALUES (?, ?)",
-                   (user_id, 1))
+    cursor.execute("INSERT OR REPLACE INTO user (id, active) VALUES (?, ?)", (user_id, 1))
 
     conn.commit()
     conn.close()
@@ -36,11 +30,9 @@ def init_user(user_id):
 
 # Запрос статистики
 def get_report(user_id):
-    # Подключаемся к базе данных
     conn = sqlite3.connect('sqlite.db')
     cursor = conn.cursor()
 
-    # SQL-запрос для получения статистики
     query = '''
             SELECT 
                 COUNT(*) AS total_questions,
@@ -69,9 +61,7 @@ def get_report(user_id):
               f"Правильных ответов: {correct_percentage}%\n"
               f"Неправильных: {incorrect_percentage}%")
 
-    # Закрываем соединение с базой данных
     conn.close()
-
     return report
 
 
@@ -80,10 +70,9 @@ def get_question(user_id):
     try:
         questions = get_unresolved_questions(user_id)
 
-        if not questions:  # Если список вопросов пустой
+        if not questions:
             return "Все вопросы были уже правильно отвечены или нет доступных активных вопросов."
 
-        # Взвешенный выбор случайного вопроса
         total_weights = sum(rate for _, _, rate in questions)
         question_id, question_text, _ = random.choices(questions, weights=[rate for _, _, rate in questions], k=1)[0]
         question = {"id": question_id, "name": question_text}
@@ -91,7 +80,7 @@ def get_question(user_id):
         set_timer(user_id, question_id)
 
     except sqlite3.Error as e:
-        print("SQLite error:", e)
+        logging.error(f"SQLite error: {e}")
         return "Произошла ошибка при работе с базой данных. Пожалуйста, попробуйте позже."
 
     return question
@@ -147,10 +136,6 @@ def process_answer(user_id, data, type: TYPE):
 
 # Запрос к OpenAI
 def ask_chatgpt(question_pack: tuple):
-    """
-    Функция принимает пакет вопрос-ответ, отправляет его модели GPT-3.5 и возвращает результат и комментарий.
-    Более подробное описание в backend_documentation.md
-    """
     user_question, user_answer = question_pack
     ask_content = f"Question: {user_question}\nAnswer: {user_answer}"
 
@@ -201,28 +186,50 @@ def download_audio_file(file_id, bot_token=BOT_TOKEN):
     logging.info(f"File downloaded successfully and saved as {voice_file}")
     return voice_file
 
+
+# Функция для конвертации аудио из формата .ogg в .wav
+def convert_audio_to_wav(ogg_file_path):
+    wav_data = io.BytesIO()
+    try:
+        process = (
+            ffmpeg
+            .input(ogg_file_path)
+            .output('pipe:1', format='wav', acodec='pcm_s16le', ar='16000')
+            .run_async(pipe_stdin=True, pipe_stdout=True, pipe_stderr=True)
+        )
+        output, error = process.communicate()
+        if process.returncode != 0:
+            logging.error(f"FFmpeg error: {error.decode()}")
+            return None
+        wav_data.write(output)
+        wav_data.seek(0)
+        return wav_data
+    except ffmpeg.Error as e:
+        logging.error(f"FFmpeg error: {e.stderr.decode()}")
+        return None
+
+
 # Функция для преобразования аудио в текст с использованием OpenAI Whisper API
 def audio_to_text(file_id):
     ogg_file_path = download_audio_file(file_id)
     if ogg_file_path is None:
         logging.error("Failed to download audio file.")
         return None
-
-    try:
-        with open(ogg_file_path, 'rb') as audio_data:
-            response = client.audio.transcriptions.create(
-                file=audio_data,
-                model="whisper-1",
-                prompt=WHISPER_PROMPT,
-                language="ru"
-            )
-        logging.info(f"Transcription response: {response}")
-    except Exception as e:
-        logging.error(f"Error during transcription: {e}")
-        os.remove(ogg_file_path)  # Удаляем ogg файл, так как он больше не нужен
+    wav_data = convert_audio_to_wav(ogg_file_path)
+    if wav_data is None:
+        print("Failed to convert audio to wav.")
+        os.remove(ogg_file_path)
+        return None
+    response = client.audio.transcriptions.create(
+        file=wav_data,
+        model="whisper-1"
+    )
+    print(type(response))
+    if hasattr(response, 'error'):
+        logging.error(f"OpenAI Whisper error: {response.error}")
+        os.remove(ogg_file_path)
         return None
 
-    # Удаляем ogg файл, так как он больше не нужен
     os.remove(ogg_file_path)
     return response.text
 
@@ -238,7 +245,7 @@ def set_timer(user_id, question_id):
     cursor = conn.cursor()
 
     current_datetime = datetime.now() + timedelta(minutes=2)
-    timedate = current_datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    timedate = current_datetime.strftime('%Y-%m-%d %H:%M:%S')
 
     cursor.execute("INSERT OR REPLACE INTO user_notify (user_id, question_id, timedate, active) VALUES (?, ?, ?, ?)",
                    (user_id, question_id, timedate, 1))
@@ -251,14 +258,13 @@ def skip_timer(user_id):
     conn = sqlite3.connect('sqlite.db')
     cursor = conn.cursor()
 
-    # SQL-запрос для получения статистики
     query = '''
             UPDATE user_notify
                SET active = 0
              WHERE user_id = ?
                AND active = 1
         '''
-    logging.info(f"skip_timer {user_id} ")
+    logging.info(f"skip_timer {user_id}")
     cursor.execute(query, (user_id,))
     conn.commit()
     conn.close()
@@ -323,3 +329,55 @@ def skip_question(user_id):
                    (user_id,))
     conn.commit()
     conn.close()
+
+
+def change_user_level(user_id):
+    conn = sqlite3.connect('sqlite.db')
+    cursor = conn.cursor()
+    try:
+        cursor.execute('''
+            UPDATE user
+               SET user_lvl = CASE 
+                   WHEN user_lvl = 'junior' THEN 'middle'
+                   WHEN user_lvl = 'middle' THEN 'senior'
+                   WHEN user_lvl = 'senior' THEN 'junior'
+                   ELSE 'junior'
+               END
+             WHERE id = ?
+        ''', (user_id,))
+        conn.commit()
+
+        cursor.execute('SELECT user_lvl FROM user WHERE id = ?', (user_id,))
+        user_lvl = cursor.fetchone()[0]
+
+        return f"Твой текущий уровень {user_lvl}."
+    except sqlite3.Error as e:
+        logging.error(f"SQLite error: {e}")
+        return "Произошла ошибка при изменении уровня пользователя."
+    finally:
+        conn.close()
+
+
+def change_user_time(user_id):
+    conn = sqlite3.connect('sqlite.db')
+    cursor = conn.cursor()
+    try:
+        cursor.execute('''
+            UPDATE user
+               SET user_minute = CASE 
+                   WHEN user_minute + 1 > 3 THEN 1
+                   ELSE user_minute + 1
+               END
+             WHERE id = ?
+        ''', (user_id,))
+        conn.commit()
+
+        cursor.execute('SELECT user_minute FROM user WHERE id = ?', (user_id,))
+        user_minute = cursor.fetchone()[0]
+
+        return f"Текущее время на ответ {user_minute} минут."
+    except sqlite3.Error as e:
+        logging.error(f"SQLite error: {e}")
+        return "Произошла ошибка при изменении времени на ответ."
+    finally:
+        conn.close()
